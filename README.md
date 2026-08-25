@@ -15,3 +15,21 @@
    ```
 
 The Vite dev server proxies `/api` requests to FastAPI. Google sign-in will work once credentials and the redirect URI are configured. PhonePe checkout intentionally remains unavailable until the merchant's approved Standard Checkout account configuration is added; it never fabricates a payment success or exposes secrets to the browser.
+
+## Deploying to Vercel
+
+Vercel serves the Vite site and the FastAPI app from the same deployment. The
+root `api/index.py` function forwards all `/api/*` requests to the backend, so
+no frontend API URL needs to change.
+
+In the Vercel project settings, add these environment variables for the
+Production environment: `APP_ENV=production`, `FRONTEND_URL` (the exact
+production site URL, without a trailing slash), `SESSION_SECRET`,
+`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `SUPABASE_URL`, and
+`SUPABASE_SERVICE_ROLE_KEY` (plus the Cashfree variables when checkout is
+enabled). Never commit them to the repository.
+
+In Google Cloud Console, configure this exact authorized redirect URI:
+`https://embed-forge.vercel.app/api/auth/google/callback`. Use your own Vercel
+production domain instead if it differs. Redeploy after changing Vercel
+environment variables.
