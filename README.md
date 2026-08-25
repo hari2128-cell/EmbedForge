@@ -43,12 +43,10 @@ Supabase migrations, including `202608250002_purchases_and_single_session.sql`:
 supabase db push
 ```
 
-Set `PRODUCT_DRIVE_URL` in Vercel to the HTTPS learning-kit URL. The app only
-redirects to that URL after a verified paid purchase and while the account's
-one active browser session remains valid. If this is a public Google Drive link,
-anyone with the copied final link can still access it; make the destination
-restricted to the purchaser's Google account or host the content behind this
-application for full enforcement.
+Set `SUPABASE_STORAGE_BUCKET=embed-forge-materials` in Vercel and make that
+bucket **private**. The learning-kit screen lists objects through the backend
+only after purchase and active-session checks, then uses five-minute signed
+Supabase Storage URLs for individual files.
 
 In Cashfree Dashboard, configure the payment webhook as
 `https://embed-forge.vercel.app/api/payments/cashfree/webhook` and subscribe to

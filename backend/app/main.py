@@ -27,6 +27,7 @@ app.add_middleware(
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 PRODUCT_PRICE_INR = 49
 PRODUCT_SLUG = "30-day-microcontroller-learning-kit"
+MATERIALS_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "embed-forge-materials")
 
 
 def safe_app_path(candidate: str | None, fallback: str = "/") -> str:
@@ -139,6 +140,57 @@ async def mark_purchase_paid(order_id: str) -> None:
         )
     if response.status_code >= 400:
         raise HTTPException(status_code=503, detail="Unable to activate purchase access. Please try again.")
+
+
+def safe_storage_path(path: str) -> str:
+    path = path.strip().strip("/")
+    if ".." in path.split("/") or "\\" in path or "\x00" in path:
+        raise HTTPException(status_code=400, detail="Invalid material path.")
+    return path
+
+
+async def require_material_access(request: Request) -> dict[str, str]:
+    user = await active_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Please sign in to open the learning kit.")
+    if not await has_product_access(str(user["id"])):
+        raise HTTPException(status_code=403, detail="A verified purchase is required to open the learning kit.")
+    return user
+
+
+async def list_materials(prefix: str) -> list[dict[str, object]]:
+    required("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")
+    storage_base = f"{os.environ['SUPABASE_URL'].rstrip('/')}/storage/v1"
+    async with httpx.AsyncClient(timeout=15) as client:
+        response = await client.post(
+            f"{storage_base}/object/list/{quote(MATERIALS_BUCKET, safe='')}",
+            headers=supabase_headers(),
+            json={"prefix": prefix, "limit": 100, "offset": 0, "sortBy": {"column": "name", "order": "asc"}},
+        )
+        if response.status_code >= 400:
+            raise HTTPException(status_code=503, detail="Unable to load learning materials.")
+        raw_items = response.json()
+        files = [f"{prefix}/{item['name']}".strip("/") for item in raw_items if item.get("id")]
+        signed: dict[str, str] = {}
+        if files:
+            signed_response = await client.post(
+                f"{storage_base}/object/sign/{quote(MATERIALS_BUCKET, safe='')}",
+                headers=supabase_headers(),
+                json={"expiresIn": 300, "paths": files},
+            )
+            if signed_response.status_code >= 400:
+                raise HTTPException(status_code=503, detail="Unable to prepare learning materials.")
+            signed = {str(item["path"]): f"{storage_base}{item['signedURL']}" for item in signed_response.json() if item.get("signedURL")}
+
+    return [
+        {
+            "name": str(item["name"]),
+            "path": f"{prefix}/{item['name']}".strip("/"),
+            "isFolder": not bool(item.get("id")),
+            "url": signed.get(f"{prefix}/{item['name']}".strip("/")),
+        }
+        for item in raw_items
+    ]
 
 
 async def sync_supabase_profile(google_user: dict[str, object]) -> dict[str, str]:
@@ -342,15 +394,15 @@ async def payment_status(merchant_order_id: str, request: Request) -> dict[str, 
 
 @app.get("/api/access/tool")
 async def open_learning_kit(request: Request) -> RedirectResponse:
-    user = await active_user(request)
-    if not user:
-        raise HTTPException(status_code=401, detail="Please sign in to open the learning kit.")
-    if not await has_product_access(str(user["id"])):
-        raise HTTPException(status_code=403, detail="A verified purchase is required to open the learning kit.")
-    product_url = os.getenv("PRODUCT_DRIVE_URL")
-    if not product_url or not product_url.startswith("https://"):
-        raise HTTPException(status_code=503, detail="Learning kit delivery is not configured yet.")
-    return RedirectResponse(product_url, status_code=303)
+    await require_material_access(request)
+    return RedirectResponse(f"{FRONTEND_URL}/learning-kit", status_code=303)
+
+
+@app.get("/api/access/materials")
+async def learning_materials(request: Request, path: str = "") -> dict[str, object]:
+    await require_material_access(request)
+    safe_path = safe_storage_path(path)
+    return {"path": safe_path, "items": await list_materials(safe_path)}
 
 
 @app.post("/api/payments/cashfree/webhook")

@@ -526,6 +526,32 @@ function Dashboard({ user, hasAccess, onSignIn }: { user: { name: string; email:
   )
 }
 
+type Material = { name: string; path: string; isFolder: boolean; url?: string }
+
+function LearningKit({ user, hasAccess, onSignIn }: { user: { name: string; email: string } | null; hasAccess: boolean; onSignIn: () => void }) {
+  const [query, setQuery] = useSearchParams()
+  const path = query.get('path') ?? ''
+  const [items, setItems] = useState<Material[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!user || !hasAccess) return
+    setLoading(true); setError('')
+    fetch(`/api/access/materials?path=${encodeURIComponent(path)}`, { credentials: 'include' })
+      .then(async response => { if (!response.ok) throw new Error(); return response.json() })
+      .then(data => setItems(data.items ?? []))
+      .catch(() => setError('Unable to load the learning materials. Please try again.'))
+      .finally(() => setLoading(false))
+  }, [user, hasAccess, path])
+
+  if (!user) return <PageTransition><main className="dashboard-layout"><div className="container" style={{textAlign: 'center', paddingTop: '120px'}}><LockKeyhole size={48} style={{color: 'var(--accent-cyan)', margin: '0 auto 32px'}} /><h2>Sign in to open your learning kit.</h2><button className="btn-primary" style={{marginTop: '32px'}} onClick={onSignIn}>Continue with Google <ArrowRight size={20}/></button></div></main></PageTransition>
+  if (!hasAccess) return <PageTransition><main className="dashboard-layout"><div className="container" style={{textAlign: 'center', paddingTop: '120px'}}><LockKeyhole size={48} style={{color: 'var(--accent-cyan)', margin: '0 auto 32px'}} /><h2>Your learning kit unlocks after payment is verified.</h2><Link className="btn-primary" style={{marginTop: '32px'}} to="/pricing">Unlock the Complete Kit <ArrowRight size={20}/></Link></div></main></PageTransition>
+
+  const parentPath = path.split('/').slice(0, -1).join('/')
+  return <PageTransition><main className="dashboard-layout"><header className="dash-header"><div className="container"><p className="label-mono" style={{marginBottom: '16px'}}>YOUR LEARNING KIT</p><h1>30-Day Microcontroller Learning Kit</h1><p className="body-standard" style={{marginTop: '16px'}}>Files are available only while your signed-in device session is active.</p></div></header><section className="section"><div className="container" style={{maxWidth: '900px'}}>{path && <button className="btn-secondary" onClick={() => setQuery(parentPath ? {path: parentPath} : {})} style={{marginBottom: '24px'}}>← Back</button>}<p className="label-mono" style={{marginBottom: '16px'}}>{path || 'START HERE'}</p>{loading ? <p className="body-standard">Loading materials…</p> : error ? <p style={{color: '#ff6b6b'}}>{error}</p> : <div className="dashboard-stage-grid">{items.map(item => item.isFolder ? <button key={item.path} className="dashboard-stage" onClick={() => setQuery({path: item.path})} style={{textAlign: 'left'}}><span>FOLDER</span><h3>{item.name}</h3><p>Open this section</p><ArrowRight size={16}/></button> : <a key={item.path} className="dashboard-stage" href={item.url} target="_blank" rel="noreferrer"><span>FILE</span><h3>{item.name}</h3><p>Open securely</p><ArrowRight size={16}/></a>)}</div>}{!loading && !error && items.length === 0 && <p className="body-standard">This folder is empty.</p>}</div></section></main></PageTransition>
+}
+
 const legalCopy: Record<string, { title: string; intro: string; sections: [string, string][] }> = {
   privacy: { title: 'Your data should stay yours.', intro: 'How EmbedForge handles the limited information required to provide a secure learning-product experience.', sections: [['Google authentication','We use Google Sign-In only to identify your account and obtain your verified email address.'],['Payments and delivery','Payment processing is handled securely. Purchase access details are delivered to your verified email after server-side confirmation.'],['Protected content','Your access to the learning kit is tied directly to your verified account.']] },
   terms: { title: 'Clear terms. No surprises.', intro: 'The terms that apply when you use EmbedForge and purchase the 30-Day Microcontroller Learning Kit.', sections: [['Product access','The learning kit is a digital product for your personal learning use. Do not redistribute, resell, or share its material.'],['Payment and delivery','₹49 is a one-time payment. Access is provided after payment verification and delivery details are sent to your verified email.'],['Account responsibility','Keep access to your Google account secure. You are responsible for activity associated with your account.']] },
@@ -618,6 +644,7 @@ function App() {
         <Route path="/preview" element={<Home user={user} setAuthOpen={setAuthOpen} />} />
         <Route path="/pricing" element={<Pricing user={user} setAuthOpen={setAuthOpen} beginCheckout={beginCheckout} checkoutLoading={checkoutLoading} phone={phone} setPhone={setPhone} message={message} />} />
         <Route path="/dashboard" element={<Dashboard user={user} hasAccess={hasAccess} onSignIn={() => setAuthOpen(true)} />} />
+        <Route path="/learning-kit" element={<LearningKit user={user} hasAccess={hasAccess} onSignIn={() => setAuthOpen(true)} />} />
         <Route path="/privacy" element={<LegalPage type="privacy"/>} />
         <Route path="/terms" element={<LegalPage type="terms"/>} />
         <Route path="/refund" element={<LegalPage type="refund"/>} />
