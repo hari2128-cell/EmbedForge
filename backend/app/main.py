@@ -106,6 +106,19 @@ async def release_active_session(user_id: str, token: str) -> None:
         )
 
 
+async def replace_active_session(user_id: str, token: str) -> bool:
+    """Invalidate the prior device by replacing its only stored session hash."""
+    required("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")
+    async with httpx.AsyncClient(timeout=10) as client:
+        response = await client.patch(
+            f"{os.environ['SUPABASE_URL'].rstrip('/')}/rest/v1/profiles",
+            params={"id": f"eq.{user_id}"},
+            headers={**supabase_headers(), "Prefer": "return=representation"},
+            json={"active_session_hash": session_token_hash(token)},
+        )
+    return response.status_code < 400 and bool(response.json())
+
+
 async def has_product_access(user_id: str) -> bool:
     required("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")
     async with httpx.AsyncClient(timeout=10) as client:
@@ -310,6 +323,7 @@ async def google_callback(request: Request, code: str, state: str) -> RedirectRe
     active_session_token = secrets.token_urlsafe(32)
     if not await claim_active_session(supabase_user["id"], active_session_token):
         request.session.clear()
+        request.session["takeover_user"] = supabase_user
         return RedirectResponse(f"{FRONTEND_URL}/?sign_in_error=active_session", status_code=303)
     request.session["user"] = supabase_user
     request.session["active_session_token"] = active_session_token
@@ -320,6 +334,21 @@ async def google_callback(request: Request, code: str, state: str) -> RedirectRe
         destination = "/"
     separator = "&" if "?" in destination else "?"
     return RedirectResponse(f"{FRONTEND_URL}{destination}{separator}signed_in=1", status_code=303)
+
+
+@app.post("/api/auth/sign-out-other-devices")
+async def sign_out_other_devices(request: Request) -> dict[str, object]:
+    """Complete a Google-verified login by revoking the previously active device."""
+    user = request.session.get("takeover_user")
+    if not user or not user.get("id"):
+        raise HTTPException(status_code=400, detail="Start Google sign-in again before taking over this account.")
+    token = secrets.token_urlsafe(32)
+    if not await replace_active_session(str(user["id"]), token):
+        raise HTTPException(status_code=503, detail="Unable to sign out the other device. Please try again.")
+    request.session.clear()
+    request.session["user"] = user
+    request.session["active_session_token"] = token
+    return {"ok": True, "user": user}
 
 
 def cashfree_base_url() -> str:
