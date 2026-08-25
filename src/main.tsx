@@ -625,12 +625,12 @@ function App() {
   const signOutOtherDevices = async () => {
     try {
       const response = await fetch('/api/auth/sign-out-other-devices', { method: 'POST', credentials: 'include' })
-      if (!response.ok) throw new Error()
-      const data = await response.json()
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.detail || 'We could not sign out the other device. Please try again.')
       const account = await fetch('/api/auth/me', { credentials: 'include' }).then(r => r.ok ? r.json() : null)
       setUser(data.user ?? null); setHasAccess(Boolean(account?.hasAccess)); setAuthMessage(''); setAuthOpen(false)
       window.history.replaceState({}, '', '/')
-    } catch { setAuthMessage('We could not sign out the other device. Please try again.') }
+    } catch (error) { setAuthMessage(error instanceof Error ? error.message : 'We could not sign out the other device. Please try again.') }
   }
   const beginCheckout = async () => {
     setCheckoutLoading(true); setMessage('')

@@ -116,7 +116,9 @@ async def replace_active_session(user_id: str, token: str) -> bool:
             headers={**supabase_headers(), "Prefer": "return=representation"},
             json={"active_session_hash": session_token_hash(token)},
         )
-    return response.status_code < 400 and bool(response.json())
+    # A successful update may legitimately be returned as HTTP 204 by PostgREST,
+    # so do not require a JSON response body to complete a verified takeover.
+    return 200 <= response.status_code < 300
 
 
 async def has_product_access(user_id: str) -> bool:
