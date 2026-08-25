@@ -3,6 +3,7 @@ import secrets
 import base64
 import hashlib
 import hmac
+import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,6 +18,7 @@ from starlette.middleware.sessions import SessionMiddleware
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 app = FastAPI(title="30D Embedded API")
+logger = logging.getLogger(__name__)
 app.add_middleware(
     SessionMiddleware,
     secret_key=os.getenv("SESSION_SECRET", ""),
@@ -91,7 +93,15 @@ async def claim_active_session(user_id: str, token: str) -> bool:
             headers={**supabase_headers(), "Prefer": "return=representation"},
             json={"active_session_hash": session_token_hash(token)},
         )
-    return response.status_code < 400 and bool(response.json())
+    if response.status_code >= 400:
+        logger.warning("Could not claim account session: Supabase returned %s", response.status_code)
+        raise HTTPException(status_code=503, detail="Account session storage is unavailable.")
+    try:
+        return bool(response.json())
+    except ValueError:
+        # With return=representation, a successful conditional update has a
+        # response body. An empty response therefore means another session won.
+        return False
 
 
 async def release_active_session(user_id: str, token: str) -> None:
@@ -118,7 +128,10 @@ async def replace_active_session(user_id: str, token: str) -> bool:
         )
     # A successful update may legitimately be returned as HTTP 204 by PostgREST,
     # so do not require a JSON response body to complete a verified takeover.
-    return 200 <= response.status_code < 300
+    if response.status_code >= 400:
+        logger.warning("Could not replace account session: Supabase returned %s", response.status_code)
+        raise HTTPException(status_code=503, detail="Account session storage is unavailable. Apply the Supabase session migration, then try again.")
+    return True
 
 
 async def has_product_access(user_id: str) -> bool:
@@ -323,7 +336,12 @@ async def google_callback(request: Request, code: str, state: str) -> RedirectRe
         raise HTTPException(status_code=400, detail="A verified Google email is required.")
     supabase_user = await sync_supabase_profile(user)
     active_session_token = secrets.token_urlsafe(32)
-    if not await claim_active_session(supabase_user["id"], active_session_token):
+    try:
+        claimed = await claim_active_session(supabase_user["id"], active_session_token)
+    except HTTPException:
+        request.session.clear()
+        return RedirectResponse(f"{FRONTEND_URL}/?sign_in_error=session_unavailable", status_code=303)
+    if not claimed:
         request.session.clear()
         request.session["takeover_user"] = supabase_user
         return RedirectResponse(f"{FRONTEND_URL}/?sign_in_error=active_session", status_code=303)
