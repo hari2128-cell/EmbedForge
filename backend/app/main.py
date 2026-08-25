@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote, urlencode
 
@@ -25,6 +26,7 @@ app.add_middleware(
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 PRODUCT_PRICE_INR = 49
+PRODUCT_SLUG = "30-day-microcontroller-learning-kit"
 
 
 def safe_app_path(candidate: str | None, fallback: str = "/") -> str:
@@ -53,6 +55,90 @@ def supabase_headers() -> dict[str, str]:
         "Authorization": f"Bearer {service_role_key}",
         "Content-Type": "application/json",
     }
+
+
+def session_token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+async def active_user(request: Request) -> dict[str, str] | None:
+    """Return the user only while this browser owns the account's active session."""
+    user = request.session.get("user")
+    token = request.session.get("active_session_token")
+    if not user or not token:
+        return None
+    required("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")
+    async with httpx.AsyncClient(timeout=10) as client:
+        response = await client.get(
+            f"{os.environ['SUPABASE_URL'].rstrip('/')}/rest/v1/profiles",
+            params={"select": "id", "id": f"eq.{user['id']}", "active_session_hash": f"eq.{session_token_hash(token)}"},
+            headers=supabase_headers(),
+        )
+    if response.status_code >= 400 or not response.json():
+        request.session.clear()
+        return None
+    return user
+
+
+async def claim_active_session(user_id: str, token: str) -> bool:
+    """Atomically claim the account only when no other device is signed in."""
+    required("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")
+    async with httpx.AsyncClient(timeout=10) as client:
+        response = await client.patch(
+            f"{os.environ['SUPABASE_URL'].rstrip('/')}/rest/v1/profiles",
+            params={"id": f"eq.{user_id}", "active_session_hash": "is.null"},
+            headers={**supabase_headers(), "Prefer": "return=representation"},
+            json={"active_session_hash": session_token_hash(token)},
+        )
+    return response.status_code < 400 and bool(response.json())
+
+
+async def release_active_session(user_id: str, token: str) -> None:
+    if not os.getenv("SUPABASE_URL") or not os.getenv("SUPABASE_SERVICE_ROLE_KEY"):
+        return
+    async with httpx.AsyncClient(timeout=10) as client:
+        await client.patch(
+            f"{os.environ['SUPABASE_URL'].rstrip('/')}/rest/v1/profiles",
+            params={"id": f"eq.{user_id}", "active_session_hash": f"eq.{session_token_hash(token)}"},
+            headers=supabase_headers(),
+            json={"active_session_hash": None},
+        )
+
+
+async def has_product_access(user_id: str) -> bool:
+    required("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")
+    async with httpx.AsyncClient(timeout=10) as client:
+        response = await client.get(
+            f"{os.environ['SUPABASE_URL'].rstrip('/')}/rest/v1/purchases",
+            params={"select": "order_id", "user_id": f"eq.{user_id}", "product_slug": f"eq.{PRODUCT_SLUG}", "status": "eq.PAID", "limit": "1"},
+            headers=supabase_headers(),
+        )
+    return response.status_code < 400 and bool(response.json())
+
+
+async def save_purchase(order_id: str, user_id: str, status: str) -> None:
+    required("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")
+    async with httpx.AsyncClient(timeout=10) as client:
+        response = await client.post(
+            f"{os.environ['SUPABASE_URL'].rstrip('/')}/rest/v1/purchases?on_conflict=order_id",
+            headers={**supabase_headers(), "Prefer": "resolution=merge-duplicates,return=minimal"},
+            json={"order_id": order_id, "user_id": user_id, "product_slug": PRODUCT_SLUG, "status": status, "paid_at": datetime.now(timezone.utc).isoformat() if status == "PAID" else None},
+        )
+    if response.status_code >= 400:
+        raise HTTPException(status_code=503, detail="Unable to record purchase status. Please try again.")
+
+
+async def mark_purchase_paid(order_id: str) -> None:
+    required("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")
+    async with httpx.AsyncClient(timeout=10) as client:
+        response = await client.patch(
+            f"{os.environ['SUPABASE_URL'].rstrip('/')}/rest/v1/purchases",
+            params={"order_id": f"eq.{order_id}"},
+            headers=supabase_headers(),
+            json={"status": "PAID", "paid_at": datetime.now(timezone.utc).isoformat()},
+        )
+    if response.status_code >= 400:
+        raise HTTPException(status_code=503, detail="Unable to activate purchase access. Please try again.")
 
 
 async def sync_supabase_profile(google_user: dict[str, object]) -> dict[str, str]:
@@ -113,12 +199,16 @@ async def health() -> dict[str, bool]:
 
 @app.get("/api/auth/me")
 async def current_user(request: Request) -> dict[str, object]:
-    user = request.session.get("user")
-    return {"authenticated": bool(user), "user": user}
+    user = await active_user(request)
+    return {"authenticated": bool(user), "user": user, "hasAccess": bool(user and await has_product_access(user["id"]))}
 
 
 @app.post("/api/auth/sign-out")
 async def sign_out(request: Request) -> dict[str, bool]:
+    user = request.session.get("user")
+    token = request.session.get("active_session_token")
+    if user and token:
+        await release_active_session(str(user["id"]), str(token))
     request.session.clear()
     return {"ok": True}
 
@@ -165,7 +255,12 @@ async def google_callback(request: Request, code: str, state: str) -> RedirectRe
     if not user.get("email_verified"):
         raise HTTPException(status_code=400, detail="A verified Google email is required.")
     supabase_user = await sync_supabase_profile(user)
+    active_session_token = secrets.token_urlsafe(32)
+    if not await claim_active_session(supabase_user["id"], active_session_token):
+        request.session.clear()
+        return RedirectResponse(f"{FRONTEND_URL}/?sign_in_error=active_session", status_code=303)
     request.session["user"] = supabase_user
+    request.session["active_session_token"] = active_session_token
     destination = safe_app_path(request.session.pop("oauth_next", "/"))
     # Google sign-in always lands at the top of the website unless an internal
     # protected route explicitly requested the sign-in flow.
@@ -181,14 +276,14 @@ def cashfree_base_url() -> str:
 
 @app.post("/api/payments/checkout")
 async def checkout(request: Request) -> dict[str, str]:
-    if not request.session.get("user"):
+    user = await active_user(request)
+    if not user:
         raise HTTPException(status_code=401, detail="Please sign in before checkout.")
     required("CASHFREE_CLIENT_ID", "CASHFREE_CLIENT_SECRET")
     body = await request.json()
     phone = str(body.get("phone", "")).strip()
     if not phone or len(phone) < 10 or len(phone) > 15 or not phone.replace("+", "", 1).isdigit():
         raise HTTPException(status_code=422, detail="Please provide a valid phone number for checkout.")
-    user = request.session["user"]
     merchant_order_id = f"ef_{uuid.uuid4().hex[:24]}"
     payload = {
         "order_id": merchant_order_id,
@@ -216,6 +311,7 @@ async def checkout(request: Request) -> dict[str, str]:
     session_id = data.get("payment_session_id")
     if not session_id:
         raise HTTPException(status_code=502, detail="Checkout is temporarily unavailable. Please try again shortly.")
+    await save_purchase(merchant_order_id, str(user["id"]), "PENDING")
     pending_orders = request.session.get("pending_orders", [])
     request.session["pending_orders"] = [*pending_orders[-9:], merchant_order_id]
     # Persist a PENDING order in Supabase here before returning the session.
@@ -225,7 +321,8 @@ async def checkout(request: Request) -> dict[str, str]:
 
 @app.get("/api/payments/orders/{merchant_order_id}")
 async def payment_status(merchant_order_id: str, request: Request) -> dict[str, str]:
-    if not request.session.get("user") or merchant_order_id not in request.session.get("pending_orders", []):
+    user = await active_user(request)
+    if not user or merchant_order_id not in request.session.get("pending_orders", []):
         raise HTTPException(status_code=404, detail="Order not found.")
     required("CASHFREE_CLIENT_ID", "CASHFREE_CLIENT_SECRET")
     headers = {
@@ -238,7 +335,22 @@ async def payment_status(merchant_order_id: str, request: Request) -> dict[str, 
     if response.status_code >= 400:
         raise HTTPException(status_code=502, detail="Unable to confirm payment right now.")
     order_status = response.json().get("order_status", "ACTIVE")
+    if order_status == "PAID":
+        await mark_purchase_paid(merchant_order_id)
     return {"status": order_status}
+
+
+@app.get("/api/access/tool")
+async def open_learning_kit(request: Request) -> RedirectResponse:
+    user = await active_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Please sign in to open the learning kit.")
+    if not await has_product_access(str(user["id"])):
+        raise HTTPException(status_code=403, detail="A verified purchase is required to open the learning kit.")
+    product_url = os.getenv("PRODUCT_DRIVE_URL")
+    if not product_url or not product_url.startswith("https://"):
+        raise HTTPException(status_code=503, detail="Learning kit delivery is not configured yet.")
+    return RedirectResponse(product_url, status_code=303)
 
 
 @app.post("/api/payments/cashfree/webhook")
@@ -257,5 +369,8 @@ async def cashfree_webhook(request: Request) -> dict[str, bool]:
     # enqueue delivery. Never infer success from a redirect or browser callback.
     payment_status = event.get("data", {}).get("payment", {}).get("payment_status")
     if payment_status == "SUCCESS":
-        pass
+        data = event.get("data", {})
+        order_id = data.get("order", {}).get("order_id") or data.get("payment", {}).get("order_id") or data.get("order_id")
+        if order_id:
+            await mark_purchase_paid(str(order_id))
     return {"ok": True}
