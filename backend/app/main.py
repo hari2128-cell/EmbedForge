@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import logging
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -28,6 +29,8 @@ app.add_middleware(
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 PRODUCT_PRICE_INR = 49
+COUPON_CODE = "EMBEDFORGE49"
+COUPON_PRICE_INR = 29
 PRODUCT_SLUG = "30-day-microcontroller-learning-kit"
 MATERIALS_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "embed-forge-materials")
 
@@ -145,13 +148,13 @@ async def has_product_access(user_id: str) -> bool:
     return response.status_code < 400 and bool(response.json())
 
 
-async def save_purchase(order_id: str, user_id: str, status: str) -> None:
+async def save_purchase(order_id: str, user_id: str, status: str, amount_inr: int = PRODUCT_PRICE_INR, coupon_code: str | None = None) -> None:
     required("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")
     async with httpx.AsyncClient(timeout=10) as client:
         response = await client.post(
             f"{os.environ['SUPABASE_URL'].rstrip('/')}/rest/v1/purchases?on_conflict=order_id",
             headers={**supabase_headers(), "Prefer": "resolution=merge-duplicates,return=minimal"},
-            json={"order_id": order_id, "user_id": user_id, "product_slug": PRODUCT_SLUG, "status": status, "paid_at": datetime.now(timezone.utc).isoformat() if status == "PAID" else None},
+            json={"order_id": order_id, "user_id": user_id, "product_slug": PRODUCT_SLUG, "status": status, "amount_inr": amount_inr, "coupon_code": coupon_code, "paid_at": datetime.now(timezone.utc).isoformat() if status == "PAID" else None},
         )
     if response.status_code >= 400:
         raise HTTPException(status_code=503, detail="Unable to record purchase status. Please try again.")
@@ -168,6 +171,37 @@ async def mark_purchase_paid(order_id: str) -> None:
         )
     if response.status_code >= 400:
         raise HTTPException(status_code=503, detail="Unable to activate purchase access. Please try again.")
+    await call_coupon_rpc("finalize_embedforge_coupon", {"p_order_id": order_id}, tolerate_missing=True)
+
+
+async def call_coupon_rpc(name: str, payload: dict[str, object], tolerate_missing: bool = False) -> object | None:
+    required("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")
+    async with httpx.AsyncClient(timeout=10) as client:
+        response = await client.post(f"{os.environ['SUPABASE_URL'].rstrip('/')}/rest/v1/rpc/{name}", headers=supabase_headers(), json=payload)
+    if response.status_code >= 400:
+        logger.warning("Coupon RPC %s failed with status %s", name, response.status_code)
+        if tolerate_missing:
+            return None
+        raise HTTPException(status_code=503, detail="Coupon service is unavailable. Apply the coupon migration, then try again.")
+    return response.json()
+
+
+async def reserve_coupon(order_id: str, user_id: str, coupon: str) -> int:
+    if coupon.upper() != COUPON_CODE:
+        raise HTTPException(status_code=422, detail="Invalid coupon code.")
+    response = await call_coupon_rpc("reserve_embedforge_coupon", {"p_order_id": order_id, "p_user_id": user_id})
+    result = response[0] if isinstance(response, list) and response else None
+    if not isinstance(result, dict) or not result.get("accepted"):
+        reason = result.get("reason") if isinstance(result, dict) else "unavailable"
+        raise HTTPException(status_code=409, detail="This coupon has reached its redemption limit." if reason == "limit_reached" else "Invalid coupon code.")
+    return int(result.get("amount_inr", COUPON_PRICE_INR))
+
+
+async def set_purchase_failed(order_id: str) -> None:
+    required("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")
+    async with httpx.AsyncClient(timeout=10) as client:
+        await client.patch(f"{os.environ['SUPABASE_URL'].rstrip('/')}/rest/v1/purchases", params={"order_id": f"eq.{order_id}"}, headers=supabase_headers(), json={"status": "FAILED"})
+    await call_coupon_rpc("release_embedforge_coupon", {"p_order_id": order_id}, tolerate_missing=True)
 
 
 def safe_storage_path(path: str) -> str:
@@ -297,8 +331,17 @@ async def sign_out(request: Request) -> dict[str, bool]:
 async def google_sign_in(request: Request, next: str = "/") -> RedirectResponse:
     required("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "SESSION_SECRET")
     state = secrets.token_urlsafe(32)
-    request.session["oauth_state"] = state
-    request.session["oauth_next"] = safe_app_path(next)
+    # A browser can begin sign-in from more than one tab. Keep a short-lived
+    # set of pending states instead of overwriting the first tab's state.
+    oauth_attempts = request.session.get("oauth_attempts", {})
+    now = int(time.time())
+    oauth_attempts = {
+        saved_state: attempt
+        for saved_state, attempt in oauth_attempts.items()
+        if isinstance(attempt, dict) and int(attempt.get("created_at", 0)) >= now - 600
+    }
+    oauth_attempts[state] = {"next": safe_app_path(next), "created_at": now}
+    request.session["oauth_attempts"] = dict(list(oauth_attempts.items())[-5:])
     redirect_uri = f"{FRONTEND_URL}/api/auth/google/callback"
     query = urlencode({
         "client_id": os.environ["GOOGLE_CLIENT_ID"],
@@ -314,7 +357,10 @@ async def google_sign_in(request: Request, next: str = "/") -> RedirectResponse:
 
 @app.get("/api/auth/google/callback")
 async def google_callback(request: Request, code: str, state: str) -> RedirectResponse:
-    if not secrets.compare_digest(state, request.session.pop("oauth_state", "")):
+    oauth_attempts = request.session.get("oauth_attempts", {})
+    attempt = oauth_attempts.pop(state, None)
+    request.session["oauth_attempts"] = oauth_attempts
+    if not attempt or not isinstance(attempt, dict):
         raise HTTPException(status_code=400, detail="Invalid sign-in state.")
     redirect_uri = f"{FRONTEND_URL}/api/auth/google/callback"
     async with httpx.AsyncClient(timeout=15) as client:
@@ -335,6 +381,16 @@ async def google_callback(request: Request, code: str, state: str) -> RedirectRe
     if not user.get("email_verified"):
         raise HTTPException(status_code=400, detail="A verified Google email is required.")
     supabase_user = await sync_supabase_profile(user)
+    # Tabs in the same browser share a cookie. If this account already owns
+    # this session, do not create a competing login or show a takeover prompt.
+    existing_user = await active_user(request)
+    if existing_user and existing_user["id"] == supabase_user["id"]:
+        destination = safe_app_path(str(attempt.get("next", "/")))
+        return RedirectResponse(f"{FRONTEND_URL}{destination}", status_code=303)
+    if existing_user:
+        existing_token = request.session.get("active_session_token")
+        if existing_token:
+            await release_active_session(str(existing_user["id"]), str(existing_token))
     active_session_token = secrets.token_urlsafe(32)
     try:
         claimed = await claim_active_session(supabase_user["id"], active_session_token)
@@ -347,7 +403,7 @@ async def google_callback(request: Request, code: str, state: str) -> RedirectRe
         return RedirectResponse(f"{FRONTEND_URL}/?sign_in_error=active_session", status_code=303)
     request.session["user"] = supabase_user
     request.session["active_session_token"] = active_session_token
-    destination = safe_app_path(request.session.pop("oauth_next", "/"))
+    destination = safe_app_path(str(attempt.get("next", "/")))
     # Google sign-in always lands at the top of the website unless an internal
     # protected route explicitly requested the sign-in flow.
     if destination in {"/", "/philosophy", "/path", "/preview"}:
@@ -383,12 +439,22 @@ async def checkout(request: Request) -> dict[str, str]:
     required("CASHFREE_CLIENT_ID", "CASHFREE_CLIENT_SECRET")
     body = await request.json()
     phone = str(body.get("phone", "")).strip()
+    coupon = str(body.get("coupon", "")).strip().upper()
     if not phone or len(phone) < 10 or len(phone) > 15 or not phone.replace("+", "", 1).isdigit():
         raise HTTPException(status_code=422, detail="Please provide a valid phone number for checkout.")
     merchant_order_id = f"ef_{uuid.uuid4().hex[:24]}"
+    amount_inr = PRODUCT_PRICE_INR
+    await save_purchase(merchant_order_id, str(user["id"]), "PENDING")
+    try:
+        if coupon:
+            amount_inr = await reserve_coupon(merchant_order_id, str(user["id"]), coupon)
+            await save_purchase(merchant_order_id, str(user["id"]), "PENDING", amount_inr, coupon)
+    except HTTPException:
+        await set_purchase_failed(merchant_order_id)
+        raise
     payload = {
         "order_id": merchant_order_id,
-        "order_amount": PRODUCT_PRICE_INR,
+        "order_amount": amount_inr,
         "order_currency": "INR",
         "order_note": "EmbedForge 30-Day Microcontroller Learning Kit",
         "customer_details": {
@@ -407,17 +473,18 @@ async def checkout(request: Request) -> dict[str, str]:
     async with httpx.AsyncClient(timeout=20) as client:
         response = await client.post(f"{cashfree_base_url()}/orders", json=payload, headers=headers)
     if response.status_code >= 400:
+        await set_purchase_failed(merchant_order_id)
         raise HTTPException(status_code=502, detail="Checkout is temporarily unavailable. Please try again shortly.")
     data = response.json()
     session_id = data.get("payment_session_id")
     if not session_id:
+        await set_purchase_failed(merchant_order_id)
         raise HTTPException(status_code=502, detail="Checkout is temporarily unavailable. Please try again shortly.")
-    await save_purchase(merchant_order_id, str(user["id"]), "PENDING")
     pending_orders = request.session.get("pending_orders", [])
     request.session["pending_orders"] = [*pending_orders[-9:], merchant_order_id]
     # Persist a PENDING order in Supabase here before returning the session.
     # Access is never granted from this route or from frontend state.
-    return {"paymentSessionId": session_id, "orderId": merchant_order_id}
+    return {"paymentSessionId": session_id, "orderId": merchant_order_id, "amount": str(amount_inr)}
 
 
 @app.get("/api/payments/orders/{merchant_order_id}")
@@ -438,7 +505,20 @@ async def payment_status(merchant_order_id: str, request: Request) -> dict[str, 
     order_status = response.json().get("order_status", "ACTIVE")
     if order_status == "PAID":
         await mark_purchase_paid(merchant_order_id)
+    elif order_status in {"EXPIRED", "TERMINATED", "FAILED"}:
+        await set_purchase_failed(merchant_order_id)
     return {"status": order_status}
+
+
+@app.post("/api/payments/coupon")
+async def validate_coupon(request: Request) -> dict[str, object]:
+    user = await active_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Please sign in before applying a coupon.")
+    code = str((await request.json()).get("coupon", "")).strip().upper()
+    if code != COUPON_CODE:
+        raise HTTPException(status_code=422, detail="Invalid coupon code.")
+    return {"valid": True, "code": COUPON_CODE, "amount": COUPON_PRICE_INR, "discount": 20, "discountPercent": 40.82}
 
 
 @app.get("/api/access/tool")

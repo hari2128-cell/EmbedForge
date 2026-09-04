@@ -428,7 +428,7 @@ function Home({ user, setAuthOpen }: any) {
   </PageTransition>
 }
 
-function Pricing({ beginCheckout, checkoutLoading, phone, setPhone, message, setAuthOpen, user }: any) {
+function Pricing({ beginCheckout, checkoutLoading, phone, setPhone, message, setAuthOpen, user, coupon, setCoupon, couponStatus, applyCoupon, couponLoading }: any) {
   useEffect(() => { window.scrollTo(0, 0) }, [])
   return <PageTransition>
     <main style={{paddingTop: '120px', minHeight: '80vh'}}>
@@ -441,8 +441,14 @@ function Pricing({ beginCheckout, checkoutLoading, phone, setPhone, message, set
           </div>
           
           <div>
-            <div className="price-val">₹49</div>
+            <div className="price-val">{couponStatus?.valid ? <><s>₹49</s> ₹29</> : '₹49'}</div>
             <p className="label-mono" style={{marginTop: '16px'}}>ONE-TIME PURCHASE</p>
+            <label className="coupon-label" htmlFor="coupon">Have a coupon?</label>
+            <div className="coupon-row">
+              <input id="coupon" className="phone-input" placeholder="Enter coupon code" value={coupon} onChange={e => setCoupon(e.target.value.toUpperCase())} />
+              <button className="btn-secondary" type="button" onClick={applyCoupon} disabled={couponLoading || !coupon.trim()}>{couponLoading ? 'Checking…' : 'Apply'}</button>
+            </div>
+            {couponStatus && <p className={couponStatus.valid ? 'coupon-success' : 'coupon-error'} role="status">{couponStatus.message}</p>}
             
             <div className="purchase-features">
               {[
@@ -461,7 +467,7 @@ function Pricing({ beginCheckout, checkoutLoading, phone, setPhone, message, set
 
             <input type="tel" className="phone-input" placeholder="Enter your 10-digit mobile number" value={phone} onChange={e => setPhone(e.target.value)} />
             <button className="btn-primary" style={{width: '100%'}} onClick={() => { if(!user) setAuthOpen(true); else beginCheckout(); }} disabled={checkoutLoading}>
-              {checkoutLoading ? 'Preparing Secure Checkout...' : 'Unlock the Complete Kit'} <ArrowRight size={20} />
+              {checkoutLoading ? 'Preparing Secure Checkout...' : `Pay ₹${couponStatus?.valid ? 29 : 49}`} <ArrowRight size={20} />
             </button>
             {message && <p style={{color: '#ff6b6b', marginTop: '16px', fontSize: '14px', textAlign: 'center'}}>{message}</p>}
             
@@ -610,6 +616,9 @@ function App() {
   const [canTakeOver, setCanTakeOver] = useState(false)
   const [accountOpen, setAccountOpen] = useState(false)
   const [phone, setPhone] = useState('')
+  const [coupon, setCoupon] = useState('')
+  const [couponLoading, setCouponLoading] = useState(false)
+  const [couponStatus, setCouponStatus] = useState<{valid: boolean; message: string} | null>(null)
   const location = useLocation()
 
   useEffect(() => { fetch('/api/auth/me', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(data => { setUser(data?.user ?? null); setHasAccess(Boolean(data?.hasAccess)) }).catch(() => undefined) }, [])
@@ -651,14 +660,25 @@ function App() {
   const beginCheckout = async () => {
     setCheckoutLoading(true); setMessage('')
     try {
-      const response = await fetch('/api/payments/checkout', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }) })
+      const response = await fetch('/api/payments/checkout', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone, coupon: couponStatus?.valid ? coupon : '' }) })
       if (response.status === 401) { setAuthOpen(true); return }
-      if (!response.ok) throw new Error('Checkout is temporarily unavailable. Please try again shortly.')
-      const { paymentSessionId } = await response.json() as { paymentSessionId?: string }
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.detail || 'Checkout is temporarily unavailable. Please try again shortly.')
+      const { paymentSessionId } = data as { paymentSessionId?: string }
       if (!paymentSessionId || !window.Cashfree) throw new Error('Checkout is temporarily unavailable.')
       window.Cashfree({ mode: 'sandbox' }).checkout({ paymentSessionId, redirectTarget: '_self' })
-    } catch { setMessage('Checkout is temporarily unavailable. Please try again shortly.') }
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Checkout is temporarily unavailable. Please try again shortly.') }
     finally { setCheckoutLoading(false) }
+  }
+  const applyCoupon = async () => {
+    setCouponLoading(true); setCouponStatus(null); setMessage('')
+    try {
+      const response = await fetch('/api/payments/coupon', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ coupon }) })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.detail || 'Unable to validate this coupon right now.')
+      setCouponStatus({valid: true, message: 'Coupon applied — you saved ₹20 (40.82% OFF). Total: ₹29.'})
+    } catch (error) { setCouponStatus({valid: false, message: error instanceof Error ? error.message : 'Invalid coupon code.'}) }
+    finally { setCouponLoading(false) }
   }
 
   return <>
@@ -669,7 +689,7 @@ function App() {
         <Route path="/philosophy" element={<Home user={user} setAuthOpen={setAuthOpen} />} />
         <Route path="/path" element={<Home user={user} setAuthOpen={setAuthOpen} />} />
         <Route path="/preview" element={<Home user={user} setAuthOpen={setAuthOpen} />} />
-        <Route path="/pricing" element={<Pricing user={user} setAuthOpen={setAuthOpen} beginCheckout={beginCheckout} checkoutLoading={checkoutLoading} phone={phone} setPhone={setPhone} message={message} />} />
+        <Route path="/pricing" element={<Pricing user={user} setAuthOpen={setAuthOpen} beginCheckout={beginCheckout} checkoutLoading={checkoutLoading} phone={phone} setPhone={setPhone} message={message} coupon={coupon} setCoupon={setCoupon} couponStatus={couponStatus} applyCoupon={applyCoupon} couponLoading={couponLoading} />} />
         <Route path="/dashboard" element={<Dashboard user={user} hasAccess={hasAccess} onSignIn={() => setAuthOpen(true)} />} />
         <Route path="/learning-kit" element={<LearningKit user={user} hasAccess={hasAccess} onSignIn={() => setAuthOpen(true)} />} />
         <Route path="/privacy" element={<LegalPage type="privacy"/>} />

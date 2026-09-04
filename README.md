@@ -37,7 +37,8 @@ environment variables.
 ## Required Supabase and Cashfree setup
 
 Before deploying the purchase and single-device session features, apply the
-Supabase migrations, including `202608250002_purchases_and_single_session.sql`:
+Supabase migrations, including `202608250002_purchases_and_single_session.sql`
+and `202609040003_coupon_redemptions.sql`:
 
 ```powershell
 supabase db push
@@ -54,3 +55,12 @@ payment-success events. The backend verifies the Cashfree signature from the
 raw request before granting access. The return page also verifies the order
 with Cashfree, so a legitimate paid order can activate even if the webhook is
 delayed.
+
+## Coupon configuration
+
+`EMBEDFORGE49` is handled exclusively by the backend and database. It changes
+the ₹49 price to ₹29 (₹20 / 40.82% off) and is capped at 50 successful
+redemptions. The database reserves a slot for 30 minutes while Cashfree
+checkout is active, releases it if payment fails or is abandoned, and finalizes
+it exactly once after verified payment. Do not enable coupon checkout until the
+coupon migration has been applied.

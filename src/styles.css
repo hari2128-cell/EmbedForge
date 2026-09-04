@@ -679,6 +679,14 @@ nav {
   margin-bottom: 16px;
 }
 
+.coupon-label { display:block; margin:24px 0 8px; color:var(--text-primary); font-size:14px; font-weight:700; }
+.coupon-row { display:flex; gap:10px; align-items:flex-start; }
+.coupon-row .phone-input { margin-bottom:0; min-width:0; }
+.coupon-row .btn-secondary { min-height:50px; flex:0 0 auto; }
+.coupon-success, .coupon-error { margin:10px 0 0; font-size:14px; font-weight:600; }
+.coupon-success { color:#55e6b1; }
+.coupon-error { color:#ff8585; }
+
 .phone-input:focus {
   outline: none;
   border-color: var(--accent-cyan);
@@ -1028,6 +1036,9 @@ footer {
   .dashboard-stage-grid { grid-template-columns:1fr; }
   .dashboard-stage { min-height:0; border-right:0; border-bottom:1px solid var(--border-subtle); padding:20px; }
   .dashboard-stage:last-child { border-bottom:0; }
+  .coupon-row { flex-direction:column; }
+  .coupon-row .btn-secondary { width:100%; }
+  .phase-group { min-width:min(320px, calc(100vw - 48px)); }
 }
 
 .drawer-overlay {
