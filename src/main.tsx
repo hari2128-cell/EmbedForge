@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useState } from 'react'
+import { StrictMode, useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Link, Navigate, Route, Routes, useSearchParams, useNavigate, useLocation, useNavigationType, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -341,7 +341,16 @@ function ScrollManager() {
 }
 
 function ProductCollection({ navigate }: { navigate: (path: string) => void }) {
-  return <section id="products" className="section story-section experience-section collection-section"><div className="container"><div className="story-line-container"><div className="story-line-fill" style={{height: '100%'}} /></div><div className="story-content"><motion.div className="story-header" initial={{opacity:0, y:16}} whileInView={{opacity:1, y:0}} viewport={{once:true, margin:'-80px'}} transition={{duration:.45}}><p className="label-mono" style={{marginBottom: '16px'}}>THE EMBEDFORGE COLLECTION</p><h2>Structured learning experiences for systems thinkers.</h2><p className="body-large" style={{marginTop: '24px'}}>The 30-Day Challenge is the first product in a growing collection built to develop practical embedded-systems thinking.</p></motion.div><div className="product-grid">{products.map((product, index) => <motion.article className={`product-card ${product.status}`} key={product.id} initial={{opacity:0, y:18}} whileInView={{opacity:1, y:0}} viewport={{once:true, margin:'-60px'}} transition={{duration:.38, delay:index * .1}}><span className="product-number">{String(index + 1).padStart(2, '0')}</span><p className="label-mono">{product.status === 'available' ? 'AVAILABLE NOW' : 'COMING SOON'}</p><h3>{product.title}</h3><p className="body-standard">{product.description}</p>{product.status === 'available' ? <><p className="product-price">₹{product.price} <span>one-time access</span></p><button className="btn-primary" onClick={() => navigate(`/products/${product.id}`)}>Explore Product <ArrowRight size={18}/></button></> : <span className="product-status">Coming Soon</span>}</motion.article>)}</div></div></div></section>
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const handRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const clearOutside = (event: PointerEvent) => { if (handRef.current && !handRef.current.contains(event.target as Node)) setActiveId(null) }
+    const clearEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setActiveId(null) }
+    document.addEventListener('pointerdown', clearOutside)
+    document.addEventListener('keydown', clearEscape)
+    return () => { document.removeEventListener('pointerdown', clearOutside); document.removeEventListener('keydown', clearEscape) }
+  }, [])
+  return <section id="products" className="section story-section experience-section collection-section"><div className="container"><div className="story-line-container"><div className="story-line-fill" style={{height: '100%'}} /></div><div className="story-content"><motion.div className="story-header" initial={{opacity:0, y:16}} whileInView={{opacity:1, y:0}} viewport={{once:true, margin:'-80px'}} transition={{duration:.45}}><p className="label-mono" style={{marginBottom: '16px'}}>THE EMBEDFORGE COLLECTION</p><h2>Structured learning experiences for systems thinkers.</h2><p className="body-large" style={{marginTop: '24px'}}>The 30-Day Challenge is the first product in a growing collection built to develop practical embedded-systems thinking.</p></motion.div><div className="product-grid" ref={handRef}>{products.map((product, index) => <motion.article className={`product-card ${product.status} ${activeId === product.id ? 'is-active' : ''}`} key={product.id} tabIndex={0} onPointerDown={() => setActiveId(product.id)} onFocus={() => setActiveId(product.id)} initial={{opacity:0, y:18}} whileInView={{opacity:1, y:0}} viewport={{once:true, margin:'-60px'}} transition={{duration:.38, delay:index * .1}}><span className="product-number">{String(index + 1).padStart(2, '0')}</span><p className="label-mono">{product.status === 'available' ? 'AVAILABLE NOW' : 'COMING SOON'}</p><h3>{product.title}</h3><p className="body-standard">{product.description}</p>{product.status === 'available' ? <><p className="product-price">₹{product.price} <span>one-time access</span></p><button className="btn-primary" onClick={() => navigate(`/products/${product.id}`)}>Explore Product <ArrowRight size={18}/></button></> : <span className="product-status">Coming Soon</span>}</motion.article>)}</div></div></div></section>
 }
 
 function EmbedForgeApproach() {
