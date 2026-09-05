@@ -320,9 +320,11 @@ function ScrollManager() {
   const location = useLocation()
   const navigationType = useNavigationType()
   const navigate = useNavigate()
+  const initialLoad = useRef(true)
 
   useEffect(() => {
-    const isReload = performance.getEntriesByType('navigation').some(entry => (entry as PerformanceNavigationTiming).type === 'reload')
+    const isReload = initialLoad.current && performance.getEntriesByType('navigation').some(entry => (entry as PerformanceNavigationTiming).type === 'reload')
+    initialLoad.current = false
     const preserveOnReload = location.pathname === '/payment/return' || location.pathname.startsWith('/learning-kit')
     if (isReload && location.pathname !== '/' && !preserveOnReload) {
       navigate('/', { replace: true })
