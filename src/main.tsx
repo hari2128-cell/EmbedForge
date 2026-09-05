@@ -310,7 +310,15 @@ function GlobalFooter() {
   )
 }
 
-function Home({ user, setAuthOpen }: any) {
+function FeaturedProductIntro({ product }: { product: Product }) {
+  return <section id="featured-product" className="section story-section experience-section"><div className="container"><div className="story-line-container"><div className="story-line-fill" style={{height: '100%'}} /></div><div className="split-layout story-content"><motion.div initial={{opacity: 0, y: 16}} whileInView={{opacity: 1, y: 0}} viewport={{once: true, margin: '-80px'}} transition={{duration: .45}}><p className="label-mono" style={{marginBottom: '16px'}}>FEATURED PRODUCT · AVAILABLE NOW</p><h2>{product.title}</h2><p className="body-large" style={{marginTop: '24px'}}>{product.description}</p><div className="hero-actions"><a className="btn-primary" href="#learning-path">Explore the Learning Path <ArrowRight size={18}/></a><a className="btn-text" href="#preview">Preview the Material <ArrowRight size={18}/></a></div></motion.div><motion.div initial={{opacity: 0, y: 16}} whileInView={{opacity: 1, y: 0}} viewport={{once: true, margin: '-80px'}} transition={{duration: .45, delay: .08}} className="featured-product-meta"><span className="product-number">01</span><p className="label-mono">{product.duration} · ONE-TIME ACCESS</p><p className="product-price">₹{product.price} <span>no subscription</span></p><p className="body-standard">A structured product for learning the fundamentals, then reasoning about the complete system.</p></motion.div></div></div></section>
+}
+
+function ProductCollection({ navigate }: { navigate: (path: string) => void }) {
+  return <section id="products" className="section story-section experience-section collection-section"><div className="container"><div className="story-line-container"><div className="story-line-fill" style={{height: '100%'}} /></div><div className="story-content"><motion.div className="story-header" initial={{opacity:0, y:16}} whileInView={{opacity:1, y:0}} viewport={{once:true, margin:'-80px'}} transition={{duration:.45}}><p className="label-mono" style={{marginBottom: '16px'}}>THE EMBEDFORGE COLLECTION</p><h2>Structured learning experiences for systems thinkers.</h2><p className="body-large" style={{marginTop: '24px'}}>The 30-Day Challenge is the first product in a growing collection built to develop practical embedded-systems thinking.</p></motion.div><div className="product-grid">{products.map((product, index) => <motion.article className={`product-card ${product.status}`} key={product.id} initial={{opacity:0, y:18}} whileInView={{opacity:1, y:0}} viewport={{once:true, margin:'-60px'}} transition={{duration:.38, delay:index * .1}}><span className="product-number">{String(index + 1).padStart(2, '0')}</span><p className="label-mono">{product.status === 'available' ? 'AVAILABLE NOW' : 'COMING SOON'}</p><h3>{product.title}</h3><p className="body-standard">{product.description}</p>{product.status === 'available' ? <><p className="product-price">₹{product.price} <span>one-time access</span></p><button className="btn-primary" onClick={() => navigate(`/products/${product.id}`)}>Explore Product <ArrowRight size={18}/></button></> : <span className="product-status">Coming Soon</span>}</motion.article>)}</div></div></div></section>
+}
+
+function Home({ user, setAuthOpen, ...purchaseProps }: any) {
   const navigate = useNavigate()
   const { hash, pathname } = useLocation()
 
@@ -350,28 +358,7 @@ function Home({ user, setAuthOpen }: any) {
         </div>
       </section>
 
-      <section id="products" className="section story-section">
-        <div className="container">
-          <div className="story-content">
-            <div className="story-header">
-              <p className="label-mono" style={{marginBottom: '16px'}}>THE EMBEDFORGE COLLECTION</p>
-              <h2>Curated journeys for embedded-systems thinkers.</h2>
-              <p className="body-large" style={{marginTop: '24px'}}>EmbedForge is a growing collection of focused, practical learning experiences.</p>
-            </div>
-            <div className="product-grid">
-              {products.map((product, index) => <article className={`product-card ${product.status}`} key={product.id}>
-                <span className="product-number">{String(index + 1).padStart(2, '0')}</span>
-                <p className="label-mono">{product.status === 'available' ? 'AVAILABLE NOW' : 'COMING SOON'}</p>
-                <h3>{product.title}</h3>
-                <p className="body-standard">{product.description}</p>
-                {product.status === 'available' ? <><p className="product-price">₹{product.price} <span>one-time access</span></p><button className="btn-primary" onClick={() => navigate(`/products/${product.id}`)}>Explore Product <ArrowRight size={18}/></button></> : <span className="product-status">Coming Soon</span>}
-              </article>)}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="why-embedded" className="section story-section">
+      <section id="why-embedded" className="section story-section experience-section">
         <div className="container">
           <div className="story-line-container"><div className="story-line-fill" style={{height: '100%'}}></div></div>
           <div className="split-layout story-content">
@@ -386,13 +373,22 @@ function Home({ user, setAuthOpen }: any) {
         </div>
       </section>
 
+      <section className="section story-section experience-section philosophy-bridge"><div className="container"><div className="story-line-container"><div className="story-line-fill" style={{height: '100%'}} /></div><motion.div className="story-content story-header" initial={{opacity:0, y:16}} whileInView={{opacity:1, y:0}} viewport={{once:true, margin:'-80px'}} transition={{duration:.45}}><p className="label-mono" style={{marginBottom: '16px'}}>THE EMBEDFORGE APPROACH</p><h2>Learn the system, not just the steps.</h2><p className="body-large" style={{marginTop: '24px'}}>Each EmbedForge product is built around deliberate progression: understand the hardware, make decisions with context, and apply the ideas in practical work.</p></motion.div></div></section>
+
+      <FeaturedProductIntro product={featuredProduct}/>
+      <ProductLearningPath product={featuredProduct}/>
+      <section className="preview-bridge"><div className="container"><span className="label-mono">PREVIEW AVAILABLE</span><a href="#preview" className="btn-text">See the actual learning material <ArrowRight size={18}/></a></div></section>
+      <ProductPreview product={featuredProduct} user={user} setAuthOpen={setAuthOpen}/>
+      <ProductPricing product={featuredProduct} user={user} setAuthOpen={setAuthOpen} {...purchaseProps}/>
+      <ProductCollection navigate={navigate}/>
+
     </main>
   </PageTransition>
 }
 
 function ProductLearningPath({ product }: { product: Product }) {
   if (!product.learningPath?.length) return null
-  return <section id="learning-path" className="section story-section"><div className="container"><div className="story-line-container"><div className="story-line-fill" style={{height: '100%'}} /></div><div className="story-content"><div className="story-header"><p className="label-mono" style={{marginBottom: '16px'}}>LEARNING PATH</p><h2>{product.duration}.<br/>One deliberate progression.</h2><p className="body-large" style={{marginTop: '24px'}}>A structured path from microcontroller fundamentals to practical embedded-system thinking.</p></div><div className="stage-timeline">{product.learningPath.map((stage, i) => <motion.div className="stage-card" key={stage.number} initial={{opacity:0, x:-20}} whileInView={{opacity:1, x:0}} viewport={{once:true, margin: '-100px'}} transition={{delay: i * 0.1}}><div className="stage-number">{stage.number}</div><div><h3 className="card-heading">{stage.title}</h3><p className="body-standard">{stage.description}</p></div></motion.div>)}</div><div style={{marginTop: '48px', display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-faint)'}}><LockKeyhole size={18} /><span className="body-standard">The complete curriculum unlocks with this learning product.</span></div></div></div></section>
+  return <section id="learning-path" className="section story-section experience-section"><div className="container"><div className="story-line-container"><div className="story-line-fill" style={{height: '100%'}} /></div><div className="story-content"><div className="story-header"><p className="label-mono" style={{marginBottom: '16px'}}>LEARNING PATH</p><h2>{product.duration}.<br/>One deliberate progression.</h2><p className="body-large" style={{marginTop: '24px'}}>A structured path from microcontroller fundamentals to practical embedded-system thinking.</p></div><div className="stage-timeline">{product.learningPath.map((stage, i) => <motion.div className="stage-card" key={stage.number} initial={{opacity:0, x:-20}} whileInView={{opacity:1, x:0}} viewport={{once:true, margin: '-100px'}} transition={{delay: i * 0.1}}><div className="stage-number">{stage.number}</div><div><h3 className="card-heading">{stage.title}</h3><p className="body-standard">{stage.description}</p></div></motion.div>)}</div><div style={{marginTop: '48px', display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-faint)'}}><LockKeyhole size={18} /><span className="body-standard">The complete curriculum unlocks with this learning product.</span></div></div></div></section>
 }
 
 function ProductPreview({ product, user, setAuthOpen }: { product: Product; user: unknown; setAuthOpen: (open: boolean) => void }) {
@@ -665,8 +661,8 @@ function App() {
     <GlobalNav user={user} authOpen={authOpen} setAuthOpen={setAuthOpen} accountOpen={accountOpen} setAccountOpen={setAccountOpen} beginSignIn={beginSignIn} authenticating={authenticating} signOut={signOut} authMessage={authMessage} canTakeOver={canTakeOver} signOutOtherDevices={signOutOtherDevices} />
     <AnimatePresence mode="wait">
       <Routes location={location} key={location.pathname}>
-        <Route path="/" element={<Home user={user} setAuthOpen={setAuthOpen} />} />
-        <Route path="/philosophy" element={<Home user={user} setAuthOpen={setAuthOpen} />} />
+        <Route path="/" element={<Home user={user} setAuthOpen={setAuthOpen} beginCheckout={beginCheckout} checkoutLoading={checkoutLoading} phone={phone} setPhone={setPhone} message={message} coupon={coupon} setCoupon={setCoupon} couponStatus={couponStatus} applyCoupon={applyCoupon} couponLoading={couponLoading} />} />
+        <Route path="/philosophy" element={<Home user={user} setAuthOpen={setAuthOpen} beginCheckout={beginCheckout} checkoutLoading={checkoutLoading} phone={phone} setPhone={setPhone} message={message} coupon={coupon} setCoupon={setCoupon} couponStatus={couponStatus} applyCoupon={applyCoupon} couponLoading={couponLoading} />} />
         <Route path="/products/:productId" element={<ProductPage user={user} setAuthOpen={setAuthOpen} beginCheckout={beginCheckout} checkoutLoading={checkoutLoading} phone={phone} setPhone={setPhone} message={message} coupon={coupon} setCoupon={setCoupon} couponStatus={couponStatus} applyCoupon={applyCoupon} couponLoading={couponLoading} />} />
         <Route path="/path" element={<Navigate replace to={`/products/${featuredProduct.id}#learning-path`} />} />
         <Route path="/preview" element={<Navigate replace to={`/products/${featuredProduct.id}#preview`} />} />
