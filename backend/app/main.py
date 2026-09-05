@@ -1,5 +1,6 @@
 import os
 import secrets
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -38,7 +39,8 @@ MATERIALS_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "embed-forge-materials")
 @app.exception_handler(httpx.HTTPError)
 async def upstream_http_error(_: Request, exc: httpx.HTTPError) -> JSONResponse:
     """Do not expose DNS/network traces to users when an upstream is unreachable."""
-    logger.warning("Upstream service request failed: %s", type(exc).__name__)
+    host = exc.request.url.host if exc.request is not None else "unknown"
+    logger.warning("Upstream service request failed: %s (%s)", type(exc).__name__, host)
     return JSONResponse(
         status_code=503,
         content={"detail": "A required service is temporarily unreachable. Check your connection and try again."},
@@ -77,6 +79,18 @@ def session_token_hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+async def request_with_backoff(client: httpx.AsyncClient, method: str, url: str, **kwargs: object) -> httpx.Response:
+    """Retry transient connection failures without retrying application logic."""
+    for attempt in range(3):
+        try:
+            return await client.request(method, url, **kwargs)
+        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout):
+            if attempt == 2:
+                raise
+            await asyncio.sleep(0.35 * (2 ** attempt))
+    raise RuntimeError("unreachable")
+
+
 async def active_user(request: Request) -> dict[str, str] | None:
     """Return the user only while this browser owns the account's active session."""
     user = request.session.get("user")
@@ -85,7 +99,7 @@ async def active_user(request: Request) -> dict[str, str] | None:
         return None
     required("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")
     async with httpx.AsyncClient(timeout=10) as client:
-        response = await client.get(
+        response = await request_with_backoff(client, "GET",
             f"{os.environ['SUPABASE_URL'].rstrip('/')}/rest/v1/profiles",
             params={"select": "id", "id": f"eq.{user['id']}", "active_session_hash": f"eq.{session_token_hash(token)}"},
             headers=supabase_headers(),
@@ -277,7 +291,7 @@ async def sync_supabase_profile(google_user: dict[str, object]) -> dict[str, str
     async with httpx.AsyncClient(timeout=15) as client:
         # A profile lookup makes repeated Google sign-ins idempotent and avoids
         # creating a second Supabase account for the same verified email.
-        existing = await client.get(
+        existing = await request_with_backoff(client, "GET",
             f"{base_url}/rest/v1/profiles?select=id&email=eq.{quote(email, safe='')}",
             headers=headers,
         )
@@ -287,7 +301,7 @@ async def sync_supabase_profile(google_user: dict[str, object]) -> dict[str, str
         profile_id = str(rows[0]["id"]) if rows else ""
 
         if not profile_id:
-            created = await client.post(
+            created = await request_with_backoff(client, "POST",
                 f"{base_url}/auth/v1/admin/users",
                 headers=headers,
                 json={
@@ -300,7 +314,7 @@ async def sync_supabase_profile(google_user: dict[str, object]) -> dict[str, str
                 raise HTTPException(status_code=503, detail="Account setup is temporarily unavailable. Please try again.")
             profile_id = str(created.json()["id"])
 
-        upsert = await client.post(
+        upsert = await request_with_backoff(client, "POST",
             f"{base_url}/rest/v1/profiles?on_conflict=id",
             headers={**headers, "Prefer": "resolution=merge-duplicates,return=minimal"},
             json={
