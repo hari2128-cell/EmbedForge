@@ -186,6 +186,21 @@ h3 {
   padding-bottom: clamp(56px, 8vw, 96px);
 }
 
+.approach-section { background:linear-gradient(90deg, rgba(0,229,255,.025), transparent 42%); }
+.approach-copy { max-width:620px; }
+.learning-progression { position:relative; display:flex; min-width:0; margin:0; padding:0; list-style:none; flex-direction:column; gap:12px; }
+.progress-stage { position:relative; display:grid; grid-template-columns:32px minmax(0, 1fr); min-width:0; align-items:center; gap:14px; }
+.progress-card { min-width:0; padding:18px 20px; border:1px solid var(--border-subtle); background:var(--bg-surface); transition:border-color .2s ease, transform .2s ease; }
+.progress-stage:hover .progress-card { border-color:var(--border-active); transform:translateY(-2px); }
+.progress-number { display:block; margin-bottom:8px; color:var(--accent-cyan); font-family:var(--font-mono); font-size:12px; letter-spacing:.1em; }
+.progress-card h3 { margin:0 0 4px; color:var(--text-high); font-family:var(--font-mono); font-size:16px; letter-spacing:.08em; }
+.progress-card p { margin:0; color:var(--text-muted); font-size:14px; }
+.progress-node { position:relative; z-index:1; display:grid; width:12px; height:12px; place-items:center; border:1px solid var(--accent-blue-gray); border-radius:50%; background:var(--bg-base); }
+.progress-node i { width:4px; height:4px; border-radius:50%; background:var(--accent-cyan); box-shadow:0 0 10px rgba(0,229,255,.7); }
+.progress-trace { position:absolute; top:calc(50% + 10px); bottom:calc(-50% - 10px); left:5px; width:1px; overflow:hidden; background:var(--border-active); }
+.progress-trace i { display:block; width:100%; height:28%; background:var(--accent-cyan); animation:signalTravel 2.7s ease-in-out infinite; box-shadow:0 0 8px var(--accent-cyan); }
+@keyframes signalTravel { 0%, 20% { transform:translateY(-120%); opacity:0 } 35% { opacity:1 } 75%, 100% { transform:translateY(460%); opacity:0 } }
+
 .featured-product-meta {
   align-self: stretch;
   display: flex;
@@ -252,6 +267,8 @@ h3 {
     align-items: flex-start;
     flex-direction: column;
   }
+  .approach-section .split-layout { gap:36px; }
+  .learning-progression { max-width:520px; }
 }
 
 @media (max-width: 768px) {

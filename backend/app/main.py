@@ -517,11 +517,28 @@ async def checkout(request: Request) -> dict[str, str]:
         "x-api-version": os.getenv("CASHFREE_API_VERSION", "2025-01-01"),
         "x-idempotency-key": str(uuid.uuid4()),
     }
-    async with httpx.AsyncClient(timeout=20) as client:
-        response = await client.post(f"{cashfree_base_url()}/orders", json=payload, headers=headers)
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.post(f"{cashfree_base_url()}/orders", json=payload, headers=headers)
+    except httpx.HTTPError as exc:
+        await set_purchase_failed(merchant_order_id)
+        logger.warning("Cashfree order request failed: %s", type(exc).__name__)
+        raise HTTPException(status_code=503, detail="The payment provider is temporarily unreachable. Please try again shortly.") from exc
     if response.status_code >= 400:
         await set_purchase_failed(merchant_order_id)
-        raise HTTPException(status_code=502, detail="Checkout is temporarily unavailable. Please try again shortly.")
+        try:
+            provider_error = response.json()
+        except ValueError:
+            provider_error = {}
+        # This log is intentionally server-only: it exposes the provider's useful
+        # configuration error without leaking client secrets to the browser.
+        logger.warning(
+            "Cashfree order rejected: status=%s code=%s message=%s",
+            response.status_code,
+            provider_error.get("code", "unknown"),
+            provider_error.get("message", "unknown"),
+        )
+        raise HTTPException(status_code=502, detail="The payment provider rejected this checkout. Verify your Cashfree environment and credentials, then try again.")
     data = response.json()
     session_id = data.get("payment_session_id")
     if not session_id:
@@ -531,7 +548,7 @@ async def checkout(request: Request) -> dict[str, str]:
     request.session["pending_orders"] = [*pending_orders[-9:], merchant_order_id]
     # Persist a PENDING order in Supabase here before returning the session.
     # Access is never granted from this route or from frontend state.
-    return {"paymentSessionId": session_id, "orderId": merchant_order_id, "amount": str(amount_inr)}
+    return {"paymentSessionId": session_id, "orderId": merchant_order_id, "amount": str(amount_inr), "paymentMode": "sandbox" if os.getenv("CASHFREE_ENV", "SANDBOX").upper() == "SANDBOX" else "production"}
 
 
 @app.get("/api/payments/orders/{merchant_order_id}")
