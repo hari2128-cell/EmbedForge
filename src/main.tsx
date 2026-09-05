@@ -125,41 +125,26 @@ function EmbeddedEcosystem() {
           <text x="0" y="24" fill="var(--text-muted)" fontSize="12" letterSpacing="1" textAnchor="middle" style={{fontFamily: 'var(--font-mono)'}}>CONSUMER</text>
         </g>
       </svg>
-      {/* Mobile Version: intentionally recomposed for a readable six-node orbit. */}
-      <svg className="mobile-eco" viewBox="0 0 400 420" preserveAspectRatio="xMidYMid meet">
-        <circle cx="200" cy="210" r="148" fill="none" stroke="var(--border-active)" strokeWidth="1.5" strokeDasharray="6 6" />
-        <motion.circle cx="200" cy="210" r="148" fill="none" stroke="var(--accent-cyan)" strokeWidth="2"
-          initial={{ pathLength: 0, opacity: 0 }}
-          animate={{ pathLength: 1, opacity: 0.6 }}
-          transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
-        />
-        <rect x="130" y="160" width="140" height="100" rx="18" fill="var(--bg-surface-elevated)" stroke="var(--accent-cyan)" strokeWidth="1.5" />
-        <text x="200" y="204" fill="var(--accent-cyan)" fontSize="31" textAnchor="middle" style={{fontFamily: 'system-ui', fontWeight: 800}}>MCU</text>
-        <text x="200" y="230" fill="white" fontSize="11" letterSpacing="1" textAnchor="middle" style={{fontFamily: 'var(--font-mono)'}}>EMBEDDED SYSTEM</text>
-        <g transform="translate(200, 48)">
-          <rect x="-61" y="-18" width="122" height="36" rx="7" fill="var(--bg-surface)" stroke="var(--border-subtle)" strokeWidth="1.5" />
-          <text x="0" y="4" fill="var(--text-muted)" fontSize="11" letterSpacing=".7" textAnchor="middle" style={{fontFamily: 'var(--font-mono)'}}>AUTOMOTIVE</text>
+      {/* Mobile version is a purpose-built ecosystem, not a scaled desktop orbit. */}
+      <svg className="mobile-eco" viewBox="0 0 420 440" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Embedded systems ecosystem across real-world domains">
+        <path className="eco-orbit eco-orbit--outer" d="M66 213C78 80 196 36 310 87C414 135 399 310 292 364C176 422 59 339 66 213Z" />
+        <path className="eco-orbit eco-orbit--inner" d="M111 259C102 142 201 88 296 137C378 180 344 309 255 333C173 354 113 315 111 259Z" />
+        <path className="eco-link" d="M206 181C174 142 150 121 126 107M258 185C292 151 318 137 350 133M170 252C139 269 117 285 95 310M252 260C284 280 313 299 345 318M212 278C211 312 208 342 205 378" />
+        <circle className="eco-pulse eco-pulse--one" cx="151" cy="126" r="4" />
+        <circle className="eco-pulse eco-pulse--two" cx="307" cy="157" r="4" />
+        <circle className="eco-pulse eco-pulse--three" cx="132" cy="287" r="4" />
+        <circle className="eco-pulse eco-pulse--four" cx="298" cy="289" r="4" />
+        <g className="eco-core">
+          <rect x="151" y="181" width="118" height="96" rx="18" />
+          <text x="210" y="222" textAnchor="middle">EMBEDDED</text>
+          <text x="210" y="243" textAnchor="middle">SYSTEMS</text>
         </g>
-        <g transform="translate(80, 132)">
-          <rect x="-54" y="-18" width="108" height="36" rx="7" fill="var(--bg-surface)" stroke="var(--border-subtle)" strokeWidth="1.5" />
-          <text x="0" y="4" fill="var(--text-muted)" fontSize="11" letterSpacing=".7" textAnchor="middle" style={{fontFamily: 'var(--font-mono)'}}>CONSUMER</text>
-        </g>
-        <g transform="translate(320, 132)">
-          <rect x="-54" y="-18" width="108" height="36" rx="7" fill="var(--bg-surface)" stroke="var(--border-subtle)" strokeWidth="1.5" />
-          <text x="0" y="4" fill="var(--text-muted)" fontSize="11" letterSpacing=".7" textAnchor="middle" style={{fontFamily: 'var(--font-mono)'}}>INDUSTRIAL</text>
-        </g>
-        <g transform="translate(80, 288)">
-          <rect x="-54" y="-18" width="108" height="36" rx="7" fill="var(--bg-surface)" stroke="var(--border-subtle)" strokeWidth="1.5" />
-          <text x="0" y="4" fill="var(--text-muted)" fontSize="11" letterSpacing=".7" textAnchor="middle" style={{fontFamily: 'var(--font-mono)'}}>MEDICAL</text>
-        </g>
-        <g transform="translate(320, 288)">
-          <rect x="-54" y="-18" width="108" height="36" rx="7" fill="var(--bg-surface)" stroke="var(--border-subtle)" strokeWidth="1.5" />
-          <text x="0" y="4" fill="var(--text-muted)" fontSize="11" letterSpacing=".7" textAnchor="middle" style={{fontFamily: 'var(--font-mono)'}}>ROBOTICS</text>
-        </g>
-        <g transform="translate(200, 372)">
-          <rect x="-54" y="-18" width="108" height="36" rx="7" fill="var(--bg-surface)" stroke="var(--border-subtle)" strokeWidth="1.5" />
-          <text x="0" y="4" fill="var(--text-muted)" fontSize="11" letterSpacing=".7" textAnchor="middle" style={{fontFamily: 'var(--font-mono)'}}>IoT</text>
-        </g>
+        <g className="eco-domain eco-domain--automotive" transform="translate(210 58)"><circle r="5" /><text y="-14" textAnchor="middle">AUTOMOTIVE</text></g>
+        <g className="eco-domain eco-domain--consumer" transform="translate(73 119)"><circle r="5" /><text x="10" y="4">CONSUMER</text></g>
+        <g className="eco-domain eco-domain--industrial" transform="translate(351 132)"><circle r="5" /><text x="-10" y="4" textAnchor="end">INDUSTRIAL</text></g>
+        <g className="eco-domain eco-domain--medical" transform="translate(69 317)"><circle r="5" /><text x="10" y="4">MEDICAL</text></g>
+        <g className="eco-domain eco-domain--robotics" transform="translate(352 323)"><circle r="5" /><text x="-10" y="4" textAnchor="end">ROBOTICS</text></g>
+        <g className="eco-domain eco-domain--iot" transform="translate(206 392)"><circle r="5" /><text y="22" textAnchor="middle">IoT</text></g>
       </svg>
     </div>
   )
@@ -361,7 +346,7 @@ function EmbedForgeApproach() {
     { number: '02', title: 'REASON', description: 'Make decisions with context.' },
     { number: '03', title: 'APPLY', description: 'Apply the ideas in practical work.' },
   ]
-  return <section className="section story-section experience-section philosophy-bridge approach-section"><div className="container"><div className="story-line-container"><motion.div className="story-line-fill" initial={{scaleY: 0}} whileInView={{scaleY: 1}} viewport={{once: true, margin: '-80px'}} transition={{duration: .42}} style={{height: '100%'}} /></div><div className="split-layout story-content"><motion.div className="approach-copy" initial={{opacity:0, y:16}} whileInView={{opacity:1, y:0}} viewport={{once:true, margin:'-80px'}} transition={{duration:.45, delay:.05}}><p className="label-mono" style={{marginBottom: '16px'}}>THE EMBEDFORGE APPROACH</p><h2>Learn the system, not just the steps.</h2><p className="body-large" style={{marginTop: '24px'}}>Each EmbedForge product is built around deliberate progression: understand the hardware, make decisions with context, and apply the ideas in practical work.</p></motion.div><motion.ol className="learning-progression" initial="hidden" whileInView="visible" viewport={{once:true, margin:'-80px'}} variants={{hidden:{}, visible:{transition:{staggerChildren:.1}}}}>{stages.map((stage, index) => <motion.li className="progress-stage" key={stage.title} variants={{hidden:{opacity:0, y:12}, visible:{opacity:1, y:0}}} transition={{duration:.32}}><span className="progress-node" aria-hidden="true"><i /></span><div className="progress-card"><span className="progress-number">{stage.number}</span><h3>{stage.title}</h3><p>{stage.description}</p></div>{index < stages.length - 1 && <span className="progress-trace" aria-hidden="true"><i /></span>}</motion.li>)}</motion.ol></div></div></section>
+  return <section className="section story-section experience-section philosophy-bridge approach-section"><div className="container"><div className="story-line-container"><div className="story-line-fill" style={{height: '100%'}} /></div><div className="split-layout story-content"><motion.div className="approach-copy" initial={{opacity:0, y:16}} whileInView={{opacity:1, y:0}} viewport={{once:true, margin:'-80px'}} transition={{duration:.45, delay:.05}}><p className="label-mono" style={{marginBottom: '16px'}}>THE EMBEDFORGE APPROACH</p><h2>Learn the system, not just the steps.</h2><p className="body-large" style={{marginTop: '24px'}}>Each EmbedForge product is built around deliberate progression: understand the hardware, make decisions with context, and apply the ideas in practical work.</p></motion.div><motion.ol className="learning-progression" initial="hidden" whileInView="visible" viewport={{once:true, margin:'-80px'}} variants={{hidden:{}, visible:{transition:{staggerChildren:.1}}}}>{stages.map((stage, index) => <motion.li className="progress-stage" key={stage.title} variants={{hidden:{opacity:0, y:12}, visible:{opacity:1, y:0}}} transition={{duration:.32}}><span className="progress-node" aria-hidden="true"><i /></span><div className="progress-card"><span className="progress-number">{stage.number}</span><h3>{stage.title}</h3><p>{stage.description}</p></div>{index < stages.length - 1 && <span className="progress-trace" aria-hidden="true"><i /></span>}</motion.li>)}</motion.ol></div></div></section>
 }
 
 function Home({ setAuthOpen }: any) {
@@ -381,11 +366,12 @@ function Home({ setAuthOpen }: any) {
                 <button className="btn-primary" onClick={() => navigate('/#products')}>Explore the Collection <ArrowRight size={18}/></button>
                 <button className="btn-text" onClick={() => navigate(`/products/${featuredProduct.id}`)}>Explore the Featured Product <ArrowRight size={18}/></button>
               </div>
-              <p className="hero-price">Focused learning products · One-time purchase · No subscription</p>
+              <p className="hero-price hero-price--desktop">Focused learning products · One-time purchase · No subscription</p>
             </motion.div>
             <motion.div initial={{opacity:0, scale:0.95}} animate={{opacity:1, scale:1}} transition={{duration:0.8, delay:0.2}}>
               <InteractiveSignalDiagram />
             </motion.div>
+            <p className="hero-price hero-price--mobile">Focused learning products · One-time purchase · No subscription</p>
           </div>
         </div>
       </section>
