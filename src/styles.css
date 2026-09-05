@@ -773,10 +773,16 @@ nav {
   margin-bottom: 16px;
 }
 
+.signal-labels { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); align-items:center; gap:12px; padding:16px 24px; }
+.signal-labels span { min-width:0; text-align:center; white-space:nowrap; }
+.signal-labels span:first-child { text-align:left; }
+.signal-labels span:last-child { text-align:right; }
+
 .coupon-label { display:block; margin:24px 0 8px; color:var(--text-primary); font-size:14px; font-weight:700; }
 .coupon-row { display:flex; gap:10px; align-items:flex-start; }
 .coupon-row .phone-input { margin-bottom:0; min-width:0; }
 .coupon-row .btn-secondary { min-height:50px; flex:0 0 auto; }
+.coupon-remove { min-height:50px; white-space:nowrap; }
 .coupon-success, .coupon-error { margin:10px 0 0; font-size:14px; font-weight:600; }
 .coupon-success { color:#55e6b1; }
 .coupon-error { color:#ff8585; }
@@ -1212,6 +1218,9 @@ footer {
   .dashboard-stage:last-child { border-bottom:0; }
   .coupon-row { flex-direction:column; }
   .coupon-row .btn-secondary { width:100%; }
+  .signal-diagram { margin-top:4px; }
+  .signal-labels { grid-template-columns:1fr; gap:5px; padding:14px 18px; }
+  .signal-labels span, .signal-labels span:first-child, .signal-labels span:last-child { text-align:center; white-space:normal; }
   .phase-group { min-width:min(320px, calc(100vw - 48px)); }
   .materials-grid { grid-template-columns:1fr; }
   .materials-toolbar { align-items:flex-start; flex-direction:column; }
