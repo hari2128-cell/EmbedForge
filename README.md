@@ -16,15 +16,27 @@
 
 The Vite dev server proxies `/api` requests to FastAPI. Google sign-in will work once credentials and the redirect URI are configured. PhonePe checkout intentionally remains unavailable until the merchant's approved Standard Checkout account configuration is added; it never fabricates a payment success or exposes secrets to the browser.
 
-## Deploying to Vercel
+## Deploying the frontend and API
 
-Vercel serves the Vite site and the FastAPI app from the same deployment. The
-root `api/index.py` function forwards all `/api/*` requests to the backend, so
-no frontend API URL needs to change.
+Vercel serves the Vite frontend and proxies `/api/*` requests to the Render
+FastAPI service configured in `vercel.json`. Keep `FRONTEND_URL` set to the
+exact Vercel production URL, without a trailing slash.
 
-In the Vercel project settings, add these environment variables for the
-Production environment: `APP_ENV=production`, `FRONTEND_URL` (the exact
-production site URL, without a trailing slash), `SESSION_SECRET`,
+For a launch targeting roughly 100–150 concurrent users, use a paid Render
+web service (at least 1 GB RAM) and set this start command:
+
+```bash
+uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT --workers ${WEB_CONCURRENCY:-2} --timeout-keep-alive 30
+```
+
+Set `WEB_CONCURRENCY=2`, `HTTP_MAX_CONNECTIONS=100`,
+`HTTP_MAX_KEEPALIVE_CONNECTIONS=40`, and `MAX_CONCURRENT_REQUESTS=120` in
+Render. These limits apply per worker; the API keeps shared outbound
+connections to Supabase and Cashfree rather than opening one per request.
+
+In Render, add these environment variables for the Production environment:
+`APP_ENV=production`, `FRONTEND_URL` (the exact production site URL, without a
+trailing slash), `SESSION_SECRET`,
 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `SUPABASE_URL`, and
 `SUPABASE_SERVICE_ROLE_KEY` (plus the Cashfree variables when checkout is
 enabled). Never commit them to the repository.

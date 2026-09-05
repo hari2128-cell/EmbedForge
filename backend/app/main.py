@@ -6,6 +6,8 @@ import hashlib
 import hmac
 import logging
 import uuid
+from collections import defaultdict, deque
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote, urlencode
@@ -19,7 +21,27 @@ from starlette.middleware.sessions import SessionMiddleware
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
-app = FastAPI(title="30D Embedded API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Create one pooled outbound client for each API worker."""
+    limits = httpx.Limits(
+        max_connections=int(os.getenv("HTTP_MAX_CONNECTIONS", "100")),
+        max_keepalive_connections=int(os.getenv("HTTP_MAX_KEEPALIVE_CONNECTIONS", "40")),
+        keepalive_expiry=30,
+    )
+    app.state.http_client = httpx.AsyncClient(
+        timeout=httpx.Timeout(connect=5, read=20, write=20, pool=5),
+        limits=limits,
+        follow_redirects=False,
+    )
+    try:
+        yield
+    finally:
+        await app.state.http_client.aclose()
+
+
+app = FastAPI(title="30D Embedded API", lifespan=lifespan)
 logger = logging.getLogger(__name__)
 app.add_middleware(
     SessionMiddleware,
@@ -34,6 +56,68 @@ COUPON_CODE = "EMBEDFORGE49"
 COUPON_PRICE_INR = 29
 PRODUCT_SLUG = "30-day-microcontroller-learning-kit"
 MATERIALS_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "embed-forge-materials")
+MAX_CONCURRENT_REQUESTS = int(os.getenv("MAX_CONCURRENT_REQUESTS", "120"))
+request_semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+rate_limit_lock = asyncio.Lock()
+rate_limit_events: dict[str, deque[float]] = defaultdict(deque)
+
+
+@asynccontextmanager
+async def pooled_client():
+    """Compatibility wrapper for request code that must not close the shared pool."""
+    yield app.state.http_client
+
+
+def client_address(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.split(",", 1)[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+async def rate_limit(request: Request, limit: int, window_seconds: int) -> JSONResponse | None:
+    key = f"{request.url.path}:{client_address(request)}"
+    now = asyncio.get_running_loop().time()
+    async with rate_limit_lock:
+        events = rate_limit_events[key]
+        while events and events[0] <= now - window_seconds:
+            events.popleft()
+        if len(events) >= limit:
+            retry_after = max(1, int(window_seconds - (now - events[0])))
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Too many requests. Please wait a moment and try again."},
+                headers={"Retry-After": str(retry_after)},
+            )
+        events.append(now)
+        # Keep the limiter bounded even when clients rotate addresses.
+        if len(rate_limit_events) > 10_000:
+            stale_before = now - max(window_seconds, 600)
+            for stale_key in [candidate for candidate, values in rate_limit_events.items() if not values or values[-1] < stale_before]:
+                rate_limit_events.pop(stale_key, None)
+    return None
+
+
+@app.middleware("http")
+async def protect_capacity(request: Request, call_next):
+    rules = {
+        "/api/auth/google/start": (12, 300),
+        "/api/auth/sign-out-other-devices": (10, 300),
+        "/api/payments/checkout": (8, 60),
+        "/api/payments/coupon": (20, 60),
+    }
+    if request.url.path in rules:
+        blocked = await rate_limit(request, *rules[request.url.path])
+        if blocked:
+            return blocked
+    try:
+        await asyncio.wait_for(request_semaphore.acquire(), timeout=0.05)
+    except TimeoutError:
+        return JSONResponse(status_code=503, content={"detail": "The service is busy. Please try again shortly."})
+    try:
+        return await call_next(request)
+    finally:
+        request_semaphore.release()
 
 
 @app.exception_handler(httpx.HTTPError)
@@ -98,7 +182,7 @@ async def active_user(request: Request) -> dict[str, str] | None:
     if not user or not token:
         return None
     required("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with pooled_client() as client:
         response = await request_with_backoff(client, "GET",
             f"{os.environ['SUPABASE_URL'].rstrip('/')}/rest/v1/profiles",
             params={"select": "id", "id": f"eq.{user['id']}", "active_session_hash": f"eq.{session_token_hash(token)}"},
@@ -113,7 +197,7 @@ async def active_user(request: Request) -> dict[str, str] | None:
 async def claim_active_session(user_id: str, token: str) -> bool:
     """Atomically claim the account only when no other device is signed in."""
     required("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with pooled_client() as client:
         response = await client.patch(
             f"{os.environ['SUPABASE_URL'].rstrip('/')}/rest/v1/profiles",
             params={"id": f"eq.{user_id}", "active_session_hash": "is.null"},
@@ -134,7 +218,7 @@ async def claim_active_session(user_id: str, token: str) -> bool:
 async def release_active_session(user_id: str, token: str) -> None:
     if not os.getenv("SUPABASE_URL") or not os.getenv("SUPABASE_SERVICE_ROLE_KEY"):
         return
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with pooled_client() as client:
         await client.patch(
             f"{os.environ['SUPABASE_URL'].rstrip('/')}/rest/v1/profiles",
             params={"id": f"eq.{user_id}", "active_session_hash": f"eq.{session_token_hash(token)}"},
@@ -146,7 +230,7 @@ async def release_active_session(user_id: str, token: str) -> None:
 async def replace_active_session(user_id: str, token: str) -> bool:
     """Invalidate the prior device by replacing its only stored session hash."""
     required("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with pooled_client() as client:
         response = await client.patch(
             f"{os.environ['SUPABASE_URL'].rstrip('/')}/rest/v1/profiles",
             params={"id": f"eq.{user_id}"},
@@ -163,7 +247,7 @@ async def replace_active_session(user_id: str, token: str) -> bool:
 
 async def has_product_access(user_id: str) -> bool:
     required("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with pooled_client() as client:
         response = await client.get(
             f"{os.environ['SUPABASE_URL'].rstrip('/')}/rest/v1/purchases",
             params={"select": "order_id", "user_id": f"eq.{user_id}", "product_slug": f"eq.{PRODUCT_SLUG}", "status": "eq.PAID", "limit": "1"},
@@ -174,7 +258,7 @@ async def has_product_access(user_id: str) -> bool:
 
 async def save_purchase(order_id: str, user_id: str, status: str, amount_inr: int = PRODUCT_PRICE_INR, coupon_code: str | None = None) -> None:
     required("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with pooled_client() as client:
         response = await client.post(
             f"{os.environ['SUPABASE_URL'].rstrip('/')}/rest/v1/purchases?on_conflict=order_id",
             headers={**supabase_headers(), "Prefer": "resolution=merge-duplicates,return=minimal"},
@@ -186,7 +270,7 @@ async def save_purchase(order_id: str, user_id: str, status: str, amount_inr: in
 
 async def mark_purchase_paid(order_id: str) -> None:
     required("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with pooled_client() as client:
         response = await client.patch(
             f"{os.environ['SUPABASE_URL'].rstrip('/')}/rest/v1/purchases",
             params={"order_id": f"eq.{order_id}"},
@@ -200,7 +284,7 @@ async def mark_purchase_paid(order_id: str) -> None:
 
 async def call_coupon_rpc(name: str, payload: dict[str, object], tolerate_missing: bool = False) -> object | None:
     required("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with pooled_client() as client:
         response = await client.post(f"{os.environ['SUPABASE_URL'].rstrip('/')}/rest/v1/rpc/{name}", headers=supabase_headers(), json=payload)
     if response.status_code >= 400:
         logger.warning("Coupon RPC %s failed with status %s", name, response.status_code)
@@ -223,7 +307,7 @@ async def reserve_coupon(order_id: str, user_id: str, coupon: str) -> int:
 
 async def set_purchase_failed(order_id: str) -> None:
     required("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with pooled_client() as client:
         await client.patch(f"{os.environ['SUPABASE_URL'].rstrip('/')}/rest/v1/purchases", params={"order_id": f"eq.{order_id}"}, headers=supabase_headers(), json={"status": "FAILED"})
     await call_coupon_rpc("release_embedforge_coupon", {"p_order_id": order_id}, tolerate_missing=True)
 
@@ -247,7 +331,7 @@ async def require_material_access(request: Request) -> dict[str, str]:
 async def list_materials(prefix: str) -> list[dict[str, object]]:
     required("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")
     storage_base = f"{os.environ['SUPABASE_URL'].rstrip('/')}/storage/v1"
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with pooled_client() as client:
         response = await client.post(
             f"{storage_base}/object/list/{quote(MATERIALS_BUCKET, safe='')}",
             headers=supabase_headers(),
@@ -293,7 +377,7 @@ async def sync_supabase_profile(google_user: dict[str, object]) -> dict[str, str
     avatar_url = str(google_user.get("picture") or "")
     headers = supabase_headers()
 
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with pooled_client() as client:
         # A profile lookup makes repeated Google sign-ins idempotent and avoids
         # creating a second Supabase account for the same verified email.
         existing = await request_with_backoff(client, "GET",
@@ -399,7 +483,7 @@ async def google_callback(request: Request, code: str, state: str) -> RedirectRe
     if not nonce or not secrets.compare_digest(request.cookies.get(cookie_name, ""), nonce):
         raise HTTPException(status_code=400, detail="Sign-in session expired. Please try again.")
     redirect_uri = f"{FRONTEND_URL}/api/auth/google/callback"
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with pooled_client() as client:
         token_response = await client.post("https://oauth2.googleapis.com/token", data={
             "code": code,
             "client_id": os.environ["GOOGLE_CLIENT_ID"],
@@ -518,7 +602,7 @@ async def checkout(request: Request) -> dict[str, str]:
         "x-idempotency-key": str(uuid.uuid4()),
     }
     try:
-        async with httpx.AsyncClient(timeout=20) as client:
+        async with pooled_client() as client:
             response = await client.post(f"{cashfree_base_url()}/orders", json=payload, headers=headers)
     except httpx.HTTPError as exc:
         await set_purchase_failed(merchant_order_id)
@@ -562,7 +646,7 @@ async def payment_status(merchant_order_id: str, request: Request) -> dict[str, 
         "x-client-secret": os.environ["CASHFREE_CLIENT_SECRET"],
         "x-api-version": os.getenv("CASHFREE_API_VERSION", "2025-01-01"),
     }
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with pooled_client() as client:
         response = await client.get(f"{cashfree_base_url()}/orders/{merchant_order_id}", headers=headers)
     if response.status_code >= 400:
         raise HTTPException(status_code=502, detail="Unable to confirm payment right now.")
