@@ -13,7 +13,7 @@ from urllib.parse import quote, urlencode
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
@@ -33,6 +33,16 @@ COUPON_CODE = "EMBEDFORGE49"
 COUPON_PRICE_INR = 29
 PRODUCT_SLUG = "30-day-microcontroller-learning-kit"
 MATERIALS_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "embed-forge-materials")
+
+
+@app.exception_handler(httpx.HTTPError)
+async def upstream_http_error(_: Request, exc: httpx.HTTPError) -> JSONResponse:
+    """Do not expose DNS/network traces to users when an upstream is unreachable."""
+    logger.warning("Upstream service request failed: %s", type(exc).__name__)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "A required service is temporarily unreachable. Check your connection and try again."},
+    )
 
 
 def safe_app_path(candidate: str | None, fallback: str = "/") -> str:
