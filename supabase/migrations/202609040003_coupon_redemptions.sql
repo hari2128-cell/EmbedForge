@@ -67,3 +67,8 @@ end; $$;
 revoke all on function public.reserve_embedforge_coupon(text, uuid) from public;
 revoke all on function public.finalize_embedforge_coupon(text) from public;
 revoke all on function public.release_embedforge_coupon(text) from public;
+
+-- The FastAPI backend calls these through its Supabase service-role key.
+grant execute on function public.reserve_embedforge_coupon(text, uuid) to service_role;
+grant execute on function public.finalize_embedforge_coupon(text) to service_role;
+grant execute on function public.release_embedforge_coupon(text) to service_role;
