@@ -477,8 +477,11 @@ async def checkout(request: Request) -> dict[str, str]:
         raise HTTPException(status_code=401, detail="Please sign in before checkout.")
     required("CASHFREE_CLIENT_ID", "CASHFREE_CLIENT_SECRET")
     body = await request.json()
+    product_id = str(body.get("productId", "")).strip()
     phone = str(body.get("phone", "")).strip()
     coupon = str(body.get("coupon", "")).strip().upper()
+    if product_id != PRODUCT_SLUG:
+        raise HTTPException(status_code=422, detail="This product is not available for checkout.")
     if not phone or len(phone) < 10 or len(phone) > 15 or not phone.replace("+", "", 1).isdigit():
         raise HTTPException(status_code=422, detail="Please provide a valid phone number for checkout.")
     merchant_order_id = f"ef_{uuid.uuid4().hex[:24]}"
@@ -554,7 +557,11 @@ async def validate_coupon(request: Request) -> dict[str, object]:
     user = await active_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Please sign in before applying a coupon.")
-    code = str((await request.json()).get("coupon", "")).strip().upper()
+    body = await request.json()
+    product_id = str(body.get("productId", "")).strip()
+    code = str(body.get("coupon", "")).strip().upper()
+    if product_id != PRODUCT_SLUG:
+        raise HTTPException(status_code=422, detail="This coupon is not available for that product.")
     if code != COUPON_CODE:
         raise HTTPException(status_code=422, detail="Invalid coupon code.")
     return {"valid": True, "code": COUPON_CODE, "amount": COUPON_PRICE_INR, "discount": 20, "discountPercent": 40.82}

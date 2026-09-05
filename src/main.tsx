@@ -1,6 +1,6 @@
 import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter, Link, Route, Routes, useSearchParams, useNavigate, useLocation } from 'react-router-dom'
+import { BrowserRouter, Link, Navigate, Route, Routes, useSearchParams, useNavigate, useLocation, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowRight, Check, ChevronLeft, ChevronRight, CircuitBoard, LockKeyhole, ShieldCheck } from 'lucide-react'
 import './styles.css'
@@ -23,7 +23,18 @@ const previewCards = [
 ]
 
 type ProductStatus = 'available' | 'coming_soon' | 'sold_out' | 'archived'
-type Product = { id: string; title: string; description: string; status: ProductStatus; price?: number; previewCards?: typeof previewCards }
+type LearningStage = { number: string; title: string; description: string }
+type PreviewItem = { label: string; title: string; description: string; image: string }
+type Product = {
+  id: string
+  title: string
+  description: string
+  status: ProductStatus
+  price?: number
+  duration?: string
+  learningPath?: LearningStage[]
+  previewItems?: PreviewItem[]
+}
 
 const products: Product[] = [
   {
@@ -32,11 +43,15 @@ const products: Product[] = [
     description: 'Thirty deliberate days across fundamentals, peripherals, Embedded C, debugging, and practical system thinking.',
     status: 'available',
     price: 49,
-    previewCards,
+    duration: '30 days',
+    learningPath: stageTeaser.map(([number, title, description]) => ({ number, title, description })),
+    previewItems: previewCards.map(([label, title, description, image]) => ({ label: `Day ${label}`, title, description, image })),
   },
   { id: 'coming-soon-01', title: 'Coming Soon', description: 'A new structured embedded-systems learning experience is being developed.', status: 'coming_soon' },
   { id: 'coming-soon-02', title: 'Coming Soon', description: 'More practical learning resources and engineering challenges are on the way.', status: 'coming_soon' },
 ]
+
+const featuredProduct = products[0]
 
 function InteractiveSignalDiagram() {
   return (
@@ -167,10 +182,8 @@ function GlobalNav({ user, authOpen, setAuthOpen, accountOpen, setAccountOpen, b
           <Link className="brand" to="/"><CircuitBoard size={24}/> EMBED<span style={{color: 'var(--text-high)'}}>FORGE</span></Link>
           <div className="nav-links">
             <Link to="/philosophy">Philosophy</Link>
-            <Link to="/path">The Path</Link>
-            <Link to="/#products">Products</Link>
-            <Link to="/preview">Preview</Link>
-            <Link to="/pricing">Pricing</Link>
+            <Link to="/#products">Collection</Link>
+            <Link to={`/products/${featuredProduct.id}`}>Featured Product</Link>
           </div>
           <div className="nav-actions">
             {user ? (
@@ -204,10 +217,8 @@ function GlobalNav({ user, authOpen, setAuthOpen, accountOpen, setAccountOpen, b
               </div>
               <div style={{display: 'flex', flexDirection: 'column', gap: '24px'}}>
                 <Link to="/philosophy" onClick={() => setMenu(false)}>Philosophy</Link>
-                <Link to="/path" onClick={() => setMenu(false)}>The Path</Link>
-                <Link to="/#products" onClick={() => setMenu(false)}>Products</Link>
-                <Link to="/preview" onClick={() => setMenu(false)}>Preview</Link>
-                <Link to="/pricing" onClick={() => setMenu(false)}>Pricing</Link>
+                <Link to="/#products" onClick={() => setMenu(false)}>Collection</Link>
+                <Link to={`/products/${featuredProduct.id}`} onClick={() => setMenu(false)}>Featured Product</Link>
                 <hr style={{borderColor: 'var(--border-subtle)', opacity: 0.5, margin: '8px 0'}} />
                 {user ? (
                   <>
@@ -300,15 +311,12 @@ function GlobalFooter() {
 }
 
 function Home({ user, setAuthOpen }: any) {
-  const [previewIndex, setPreviewIndex] = useState(0)
   const navigate = useNavigate()
   const { hash, pathname } = useLocation()
 
   useEffect(() => {
     const sectionForRoute: Record<string, string> = {
       '/philosophy': 'why-embedded',
-      '/path': 'journey',
-      '/preview': 'preview',
     }
     const target = hash ? hash.replace('#', '') : sectionForRoute[pathname]
     if (target) {
@@ -328,12 +336,12 @@ function Home({ user, setAuthOpen }: any) {
             <motion.div initial={{opacity:0, y:20}} animate={{opacity:1, y:0}} transition={{duration:0.6}}>
               <p className="label-mono" style={{marginBottom: '24px'}}>Embedded Systems Learning Journey</p>
               <h1>From the first register<br/><em>to systems-level thinking.</em></h1>
-              <p className="body-hero" style={{marginTop: '24px'}}>One deliberate path through microcontroller fundamentals, peripherals, Embedded C, debugging and practical projects.</p>
+              <p className="body-hero" style={{marginTop: '24px'}}>A growing collection of deliberate learning experiences for engineers who want to understand systems from the register upward.</p>
               <div className="hero-actions">
-                <button className="btn-primary" onClick={() => navigate('/pricing')}>Explore the Learning Kit <ArrowRight size={18}/></button>
-                <button className="btn-text" onClick={() => navigate('/preview')}>Preview the Notes <ArrowRight size={18}/></button>
+                <button className="btn-primary" onClick={() => navigate('/#products')}>Explore the Collection <ArrowRight size={18}/></button>
+                <button className="btn-text" onClick={() => navigate(`/products/${featuredProduct.id}`)}>Explore the Featured Product <ArrowRight size={18}/></button>
               </div>
-              <p className="hero-price">₹49 · One-time purchase · No subscription</p>
+              <p className="hero-price">Focused learning products · One-time purchase · No subscription</p>
             </motion.div>
             <motion.div initial={{opacity:0, scale:0.95}} animate={{opacity:1, scale:1}} transition={{duration:0.8, delay:0.2}}>
               <InteractiveSignalDiagram />
@@ -346,7 +354,7 @@ function Home({ user, setAuthOpen }: any) {
         <div className="container">
           <div className="story-content">
             <div className="story-header">
-              <p className="label-mono" style={{marginBottom: '16px'}}>LEARNING COLLECTION</p>
+              <p className="label-mono" style={{marginBottom: '16px'}}>THE EMBEDFORGE COLLECTION</p>
               <h2>Curated journeys for embedded-systems thinkers.</h2>
               <p className="body-large" style={{marginTop: '24px'}}>EmbedForge is a growing collection of focused, practical learning experiences.</p>
             </div>
@@ -356,7 +364,7 @@ function Home({ user, setAuthOpen }: any) {
                 <p className="label-mono">{product.status === 'available' ? 'AVAILABLE NOW' : 'COMING SOON'}</p>
                 <h3>{product.title}</h3>
                 <p className="body-standard">{product.description}</p>
-                {product.status === 'available' ? <><p className="product-price">₹{product.price} <span>one-time access</span></p><button className="btn-primary" onClick={() => navigate('/pricing')}>Explore the Learning Kit <ArrowRight size={18}/></button></> : <span className="product-status">Coming Soon</span>}
+                {product.status === 'available' ? <><p className="product-price">₹{product.price} <span>one-time access</span></p><button className="btn-primary" onClick={() => navigate(`/products/${product.id}`)}>Explore Product <ArrowRight size={18}/></button></> : <span className="product-status">Coming Soon</span>}
               </article>)}
             </div>
           </div>
@@ -378,114 +386,38 @@ function Home({ user, setAuthOpen }: any) {
         </div>
       </section>
 
-      <section id="journey" className="section story-section">
-        <div className="container">
-          <div className="story-line-container"><div className="story-line-fill" style={{height: '100%'}}></div></div>
-          <div className="story-content">
-            <div className="story-header">
-              <p className="label-mono" style={{marginBottom: '16px'}}>THE CURRICULUM</p>
-              <h2>30 days.<br/>One deliberate progression.</h2>
-              <p className="body-large" style={{marginTop: '24px'}}>A structured path from microcontroller fundamentals to practical embedded-system thinking.</p>
-            </div>
-            <div className="stage-timeline">
-              {stageTeaser.map(([num, title, desc], i) => (
-                <motion.div className="stage-card" key={num} initial={{opacity:0, x:-20}} whileInView={{opacity:1, x:0}} viewport={{once:true, margin: "-100px"}} transition={{delay: i*0.1}}>
-                  <div className="stage-number">{num}</div>
-                  <div>
-                    <h3 className="card-heading">{title}</h3>
-                    <p className="body-standard">{desc}</p>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-            <div style={{marginTop: '48px', display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-faint)'}}>
-              <LockKeyhole size={18} />
-              <span className="body-standard">The complete day-by-day curriculum unlocks with your learning kit.</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="preview" className="section story-section">
-        <div className="container">
-          <div className="story-line-container"><div className="story-line-fill" style={{height: '100%'}}></div></div>
-          <div className="story-content">
-            <div className="story-header">
-              <p className="label-mono" style={{marginBottom: '16px'}}>PRODUCT PREVIEW</p>
-              <h2>See the work before you buy.</h2>
-              <p className="body-large" style={{marginTop: '24px'}}>
-                {user ? 'Explore the representative preview pages across the complete journey.' : 'Sign in with Google to unlock the complete preview.'}
-              </p>
-            </div>
-            
-            <div className="preview-viewer">
-              <div className="doc-display">
-                <div className="doc-header">
-                  <span>DAY {previewCards[previewIndex][0]}</span>
-                  <span>EMBEDFORGE</span>
-                </div>
-                <h3 className="doc-title">{previewCards[previewIndex][1]}</h3>
-                <div className="doc-image-wrapper" style={{flex: 1, background: 'rgba(0,0,0,0.05)', borderRadius: '4px', marginTop: '24px', display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: '300px'}}>
-                  <img src={previewCards[previewIndex][3]} alt={`Preview Note Day ${previewCards[previewIndex][0]}`} style={{width: '100%', height: '100%', objectFit: 'contain', display: 'block'}} />
-                </div>
-                {!user && previewIndex > 0 && (
-                  <div style={{position: 'absolute', inset: 0, backdropFilter: 'blur(8px)', background: 'rgba(26, 37, 40, 0.8)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'white', borderRadius: '4px', zIndex: 10}}>
-                    <LockKeyhole size={32} style={{marginBottom: '16px', color: 'var(--accent-cyan)'}}/>
-                    <h4 style={{marginBottom: '16px'}}>Sign in to view</h4>
-                    <button className="btn-primary" onClick={() => setAuthOpen(true)}>Continue with Google</button>
-                  </div>
-                )}
-              </div>
-              
-              <div className="preview-sidebar">
-                <p className="preview-page-indicator label-mono" style={{marginBottom: '16px'}}>PAGE {previewIndex + 1} / {previewCards.length}</p>
-                <h3 className="preview-title" style={{fontSize: '20px', marginBottom: '8px'}}>{previewCards[previewIndex][1]}</h3>
-                <p className="preview-desc body-standard" style={{fontSize: '14px'}}>{previewCards[previewIndex][2]}</p>
-                
-                <div className="thumbnail-grid">
-                  {previewCards.map((card, i) => (
-                    <button key={i} className={`thumb-btn ${previewIndex === i ? 'active' : ''}`} onClick={() => user && setPreviewIndex(i)} disabled={!user && i > 0}>
-                      D{card[0]}
-                    </button>
-                  ))}
-                </div>
-                
-                <div className="preview-nav-btns" style={{marginTop: '32px', display: 'flex', gap: '16px'}}>
-                  <button className="btn-secondary" onClick={() => setPreviewIndex(Math.max(0, previewIndex - 1))} disabled={previewIndex === 0} style={{padding: '0 16px', width: '100%'}}><ChevronLeft size={20}/></button>
-                  <button className="btn-secondary" onClick={() => setPreviewIndex(Math.min(previewCards.length - 1, previewIndex + 1))} disabled={previewIndex === previewCards.length - 1} style={{padding: '0 16px', width: '100%'}}><ChevronRight size={20}/></button>
-                </div>
-              </div>
-            </div>
-
-            <div style={{marginTop: '80px', textAlign: 'center'}}>
-              <button className="btn-primary" onClick={() => navigate('/pricing')}>Unlock the Complete Learning Kit <ArrowRight size={18}/></button>
-            </div>
-          </div>
-        </div>
-      </section>
     </main>
   </PageTransition>
 }
 
-function Pricing({ beginCheckout, checkoutLoading, phone, setPhone, message, setAuthOpen, user, coupon, setCoupon, couponStatus, applyCoupon, couponLoading }: any) {
-  useEffect(() => { window.scrollTo(0, 0) }, [])
-  return <PageTransition>
-    <main style={{paddingTop: '120px', minHeight: '80vh'}}>
-      <div className="container">
-        <div className="pricing-layout">
+function ProductLearningPath({ product }: { product: Product }) {
+  if (!product.learningPath?.length) return null
+  return <section id="learning-path" className="section story-section"><div className="container"><div className="story-line-container"><div className="story-line-fill" style={{height: '100%'}} /></div><div className="story-content"><div className="story-header"><p className="label-mono" style={{marginBottom: '16px'}}>LEARNING PATH</p><h2>{product.duration}.<br/>One deliberate progression.</h2><p className="body-large" style={{marginTop: '24px'}}>A structured path from microcontroller fundamentals to practical embedded-system thinking.</p></div><div className="stage-timeline">{product.learningPath.map((stage, i) => <motion.div className="stage-card" key={stage.number} initial={{opacity:0, x:-20}} whileInView={{opacity:1, x:0}} viewport={{once:true, margin: '-100px'}} transition={{delay: i * 0.1}}><div className="stage-number">{stage.number}</div><div><h3 className="card-heading">{stage.title}</h3><p className="body-standard">{stage.description}</p></div></motion.div>)}</div><div style={{marginTop: '48px', display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-faint)'}}><LockKeyhole size={18} /><span className="body-standard">The complete curriculum unlocks with this learning product.</span></div></div></div></section>
+}
+
+function ProductPreview({ product, user, setAuthOpen }: { product: Product; user: unknown; setAuthOpen: (open: boolean) => void }) {
+  const [previewIndex, setPreviewIndex] = useState(0)
+  const previewItems = product.previewItems ?? []
+  if (!previewItems.length) return null
+  const item = previewItems[previewIndex]
+  return <section id="preview" className="section story-section"><div className="container"><div className="story-line-container"><div className="story-line-fill" style={{height: '100%'}} /></div><div className="story-content"><div className="story-header"><p className="label-mono" style={{marginBottom: '16px'}}>PRODUCT PREVIEW</p><h2>See the work before you buy.</h2><p className="body-large" style={{marginTop: '24px'}}>{user ? 'Explore the representative preview pages across this learning product.' : 'Sign in with Google to unlock the complete preview.'}</p></div><div className="preview-viewer"><div className="doc-display"><div className="doc-header"><span>{item.label.toUpperCase()}</span><span>EMBEDFORGE</span></div><h3 className="doc-title">{item.title}</h3><div className="doc-image-wrapper" style={{flex: 1, background: 'rgba(0,0,0,0.05)', borderRadius: '4px', marginTop: '24px', display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: '300px'}}><img src={item.image} alt={`${item.label} preview`} style={{width: '100%', height: '100%', objectFit: 'contain', display: 'block'}} /></div>{!user && previewIndex > 0 && <div style={{position: 'absolute', inset: 0, backdropFilter: 'blur(8px)', background: 'rgba(26, 37, 40, 0.8)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'white', borderRadius: '4px', zIndex: 10}}><LockKeyhole size={32} style={{marginBottom: '16px', color: 'var(--accent-cyan)'}}/><h4 style={{marginBottom: '16px'}}>Sign in to view</h4><button className="btn-primary" onClick={() => setAuthOpen(true)}>Continue with Google</button></div>}</div><div className="preview-sidebar"><p className="preview-page-indicator label-mono" style={{marginBottom: '16px'}}>PAGE {previewIndex + 1} / {previewItems.length}</p><h3 className="preview-title" style={{fontSize: '20px', marginBottom: '8px'}}>{item.title}</h3><p className="preview-desc body-standard" style={{fontSize: '14px'}}>{item.description}</p><div className="thumbnail-grid">{previewItems.map((preview, i) => <button key={preview.label} className={`thumb-btn ${previewIndex === i ? 'active' : ''}`} onClick={() => user && setPreviewIndex(i)} disabled={!user && i > 0}>{preview.label.replace(/[^0-9A-Za-z]/g, '').slice(-3)}</button>)}</div><div className="preview-nav-btns" style={{marginTop: '32px', display: 'flex', gap: '16px'}}><button className="btn-secondary" onClick={() => setPreviewIndex(Math.max(0, previewIndex - 1))} disabled={previewIndex === 0} style={{padding: '0 16px', width: '100%'}}><ChevronLeft size={20}/></button><button className="btn-secondary" onClick={() => setPreviewIndex(Math.min(previewItems.length - 1, previewIndex + 1))} disabled={previewIndex === previewItems.length - 1} style={{padding: '0 16px', width: '100%'}}><ChevronRight size={20}/></button></div></div></div></div></div></section>
+}
+
+function ProductPricing({ product, beginCheckout, checkoutLoading, phone, setPhone, message, setAuthOpen, user, coupon, setCoupon, couponStatus, applyCoupon, couponLoading }: any) {
+  return <section id="pricing" className="section story-section"><div className="container"><div className="pricing-layout">
           <div>
-            <p className="label-mono" style={{marginBottom: '16px'}}>FULL ACCESS</p>
+            <p className="label-mono" style={{marginBottom: '16px'}}>PRODUCT PRICING</p>
             <h2 style={{marginBottom: '24px'}}>Everything you need to build a stronger embedded foundation.</h2>
-            <p className="body-large">Get verified access to the complete 30-day curriculum, approved technical notes, and the private learning dashboard.</p>
+            <p className="body-large">Get verified access to the complete {product.duration} curriculum, approved technical notes, and this product's private learning dashboard.</p>
           </div>
           
           <div>
-            <div className="price-val">{couponStatus?.valid ? <><s>₹49</s> ₹29</> : '₹49'}</div>
+            <div className="price-val">{couponStatus?.valid ? <><s>₹{product.price}</s> ₹29</> : `₹${product.price}`}</div>
             <p className="label-mono" style={{marginTop: '16px'}}>ONE-TIME PURCHASE</p>
             <label className="coupon-label" htmlFor="coupon">Have a coupon?</label>
             <div className="coupon-row">
               <input id="coupon" className="phone-input" placeholder="Enter coupon code" value={coupon} onChange={e => setCoupon(e.target.value.toUpperCase())} />
-              <button className="btn-secondary" type="button" onClick={applyCoupon} disabled={couponLoading || !coupon.trim()}>{couponLoading ? 'Checking…' : 'Apply'}</button>
+              <button className="btn-secondary" type="button" onClick={() => applyCoupon(product.id)} disabled={couponLoading || !coupon.trim()}>{couponLoading ? 'Checking…' : 'Apply'}</button>
             </div>
             {couponStatus && <p className={couponStatus.valid ? 'coupon-success' : 'coupon-error'} role="status">{couponStatus.message}</p>}
             
@@ -505,8 +437,8 @@ function Pricing({ beginCheckout, checkoutLoading, phone, setPhone, message, set
             </div>
 
             <input type="tel" className="phone-input" placeholder="Enter your 10-digit mobile number" value={phone} onChange={e => setPhone(e.target.value)} />
-            <button className="btn-primary" style={{width: '100%'}} onClick={() => { if(!user) setAuthOpen(true); else beginCheckout(); }} disabled={checkoutLoading}>
-              {checkoutLoading ? 'Preparing Secure Checkout...' : `Pay ₹${couponStatus?.valid ? 29 : 49}`} <ArrowRight size={20} />
+            <button className="btn-primary" style={{width: '100%'}} onClick={() => { if(!user) setAuthOpen(true); else beginCheckout(product.id); }} disabled={checkoutLoading}>
+              {checkoutLoading ? 'Preparing Secure Checkout...' : `Pay ₹${couponStatus?.valid ? 29 : product.price}`} <ArrowRight size={20} />
             </button>
             {message && <p style={{color: '#ff6b6b', marginTop: '16px', fontSize: '14px', textAlign: 'center'}}>{message}</p>}
             
@@ -514,10 +446,17 @@ function Pricing({ beginCheckout, checkoutLoading, phone, setPhone, message, set
               <ShieldCheck size={16} /> Secure payment · One-time purchase · No subscription
             </div>
           </div>
-        </div>
-      </div>
-    </main>
-  </PageTransition>
+        </div></div></section>
+}
+
+function ProductPage(props: any) {
+  const { productId } = useParams()
+  const { hash } = useLocation()
+  const product = products.find(candidate => candidate.id === productId)
+  useEffect(() => { if (hash) setTimeout(() => document.getElementById(hash.slice(1))?.scrollIntoView({behavior: 'smooth'}), 100); else window.scrollTo(0, 0) }, [hash, productId])
+  if (!product) return <NotFound />
+  if (product.status !== 'available') return <PageTransition><main style={{paddingTop: '160px', minHeight: '80vh'}}><div className="container" style={{textAlign: 'center'}}><p className="label-mono" style={{marginBottom: '16px'}}>COMING SOON</p><h2>A new learning experience is in development.</h2><p className="body-large" style={{margin: '24px auto 48px', maxWidth: '560px'}}>{product.description}</p><Link className="btn-primary" to="/#products">Explore the Collection <ArrowRight size={18}/></Link></div></main></PageTransition>
+  return <PageTransition><main><section className="hero" style={{paddingTop: '160px'}}><div className="hero-grid-bg"/><div className="container"><div className="split-layout"><div><p className="label-mono" style={{marginBottom: '24px'}}>AVAILABLE LEARNING PRODUCT</p><h1>{product.title}</h1><p className="body-hero" style={{marginTop: '24px'}}>{product.description}</p><div className="hero-actions"><a className="btn-primary" href="#learning-path">View Learning Path <ArrowRight size={18}/></a><a className="btn-text" href="#preview">Preview the Work <ArrowRight size={18}/></a></div><p className="hero-price">₹{product.price} · One-time product access · No subscription</p></div><InteractiveSignalDiagram /></div></div></section><ProductLearningPath product={product}/><ProductPreview product={product} user={props.user} setAuthOpen={props.setAuthOpen}/><ProductPricing product={product} {...props}/></main></PageTransition>
 }
 
 function Dashboard({ user, hasAccess, onSignIn }: { user: { name: string; email: string } | null; hasAccess: boolean; onSignIn: () => void }) {
@@ -698,10 +637,10 @@ function App() {
       window.history.replaceState({}, '', '/')
     } catch (error) { setAuthMessage(error instanceof Error ? error.message : 'We could not sign out the other device. Please try again.') }
   }
-  const beginCheckout = async () => {
+  const beginCheckout = async (productId: string) => {
     setCheckoutLoading(true); setMessage('')
     try {
-      const response = await fetch('/api/payments/checkout', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone, coupon: couponStatus?.valid ? coupon : '' }) })
+      const response = await fetch('/api/payments/checkout', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ productId, phone, coupon: couponStatus?.valid ? coupon : '' }) })
       if (response.status === 401) { setAuthOpen(true); return }
       const data = await response.json().catch(() => null)
       if (!response.ok) throw new Error(data?.detail || 'Checkout is temporarily unavailable. Please try again shortly.')
@@ -711,10 +650,10 @@ function App() {
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Checkout is temporarily unavailable. Please try again shortly.') }
     finally { setCheckoutLoading(false) }
   }
-  const applyCoupon = async () => {
+  const applyCoupon = async (productId: string) => {
     setCouponLoading(true); setCouponStatus(null); setMessage('')
     try {
-      const response = await fetch('/api/payments/coupon', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ coupon }) })
+      const response = await fetch('/api/payments/coupon', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ productId, coupon }) })
       const data = await response.json().catch(() => null)
       if (!response.ok) throw new Error(data?.detail || 'Unable to validate this coupon right now.')
       setCouponStatus({valid: true, message: 'Coupon applied — you saved ₹20 (40.82% OFF). Total: ₹29.'})
@@ -728,9 +667,10 @@ function App() {
       <Routes location={location} key={location.pathname}>
         <Route path="/" element={<Home user={user} setAuthOpen={setAuthOpen} />} />
         <Route path="/philosophy" element={<Home user={user} setAuthOpen={setAuthOpen} />} />
-        <Route path="/path" element={<Home user={user} setAuthOpen={setAuthOpen} />} />
-        <Route path="/preview" element={<Home user={user} setAuthOpen={setAuthOpen} />} />
-        <Route path="/pricing" element={<Pricing user={user} setAuthOpen={setAuthOpen} beginCheckout={beginCheckout} checkoutLoading={checkoutLoading} phone={phone} setPhone={setPhone} message={message} coupon={coupon} setCoupon={setCoupon} couponStatus={couponStatus} applyCoupon={applyCoupon} couponLoading={couponLoading} />} />
+        <Route path="/products/:productId" element={<ProductPage user={user} setAuthOpen={setAuthOpen} beginCheckout={beginCheckout} checkoutLoading={checkoutLoading} phone={phone} setPhone={setPhone} message={message} coupon={coupon} setCoupon={setCoupon} couponStatus={couponStatus} applyCoupon={applyCoupon} couponLoading={couponLoading} />} />
+        <Route path="/path" element={<Navigate replace to={`/products/${featuredProduct.id}#learning-path`} />} />
+        <Route path="/preview" element={<Navigate replace to={`/products/${featuredProduct.id}#preview`} />} />
+        <Route path="/pricing" element={<Navigate replace to={`/products/${featuredProduct.id}#pricing`} />} />
         <Route path="/dashboard" element={<Dashboard user={user} hasAccess={hasAccess} onSignIn={() => setAuthOpen(true)} />} />
         <Route path="/learning-kit" element={<LearningKit user={user} hasAccess={hasAccess} authLoading={authLoading} onSignIn={() => setAuthOpen(true)} />} />
         <Route path="/privacy" element={<LegalPage type="privacy"/>} />
