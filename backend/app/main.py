@@ -4,13 +4,13 @@ import base64
 import hashlib
 import hmac
 import logging
-import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote, urlencode
 
 import httpx
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -340,18 +340,9 @@ async def sign_out(request: Request) -> dict[str, bool]:
 @app.get("/api/auth/google/start")
 async def google_sign_in(request: Request, next: str = "/") -> RedirectResponse:
     required("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "SESSION_SECRET")
-    state = secrets.token_urlsafe(32)
-    # A browser can begin sign-in from more than one tab. Keep a short-lived
-    # set of pending states instead of overwriting the first tab's state.
-    oauth_attempts = request.session.get("oauth_attempts", {})
-    now = int(time.time())
-    oauth_attempts = {
-        saved_state: attempt
-        for saved_state, attempt in oauth_attempts.items()
-        if isinstance(attempt, dict) and int(attempt.get("created_at", 0)) >= now - 600
-    }
-    oauth_attempts[state] = {"next": safe_app_path(next), "created_at": now}
-    request.session["oauth_attempts"] = dict(list(oauth_attempts.items())[-5:])
+    nonce = secrets.token_urlsafe(24)
+    serializer = URLSafeTimedSerializer(os.environ["SESSION_SECRET"], salt="embedforge-google-oauth")
+    state = serializer.dumps({"next": safe_app_path(next), "nonce": nonce})
     redirect_uri = f"{FRONTEND_URL}/api/auth/google/callback"
     query = urlencode({
         "client_id": os.environ["GOOGLE_CLIENT_ID"],
@@ -362,16 +353,32 @@ async def google_sign_in(request: Request, next: str = "/") -> RedirectResponse:
         "access_type": "online",
         "prompt": "select_account",
     })
-    return RedirectResponse(f"https://accounts.google.com/o/oauth2/v2/auth?{query}")
+    response = RedirectResponse(f"https://accounts.google.com/o/oauth2/v2/auth?{query}")
+    # A separate per-attempt cookie avoids a race where unrelated API requests
+    # rewrite the normal signed session cookie while Google is open.
+    response.set_cookie(
+        key=f"embedforge_oauth_{nonce}",
+        value=nonce,
+        max_age=600,
+        httponly=True,
+        secure=os.getenv("APP_ENV") == "production",
+        samesite="lax",
+        path="/api/auth/google/callback",
+    )
+    return response
 
 
 @app.get("/api/auth/google/callback")
 async def google_callback(request: Request, code: str, state: str) -> RedirectResponse:
-    oauth_attempts = request.session.get("oauth_attempts", {})
-    attempt = oauth_attempts.pop(state, None)
-    request.session["oauth_attempts"] = oauth_attempts
-    if not attempt or not isinstance(attempt, dict):
+    serializer = URLSafeTimedSerializer(os.environ["SESSION_SECRET"], salt="embedforge-google-oauth")
+    try:
+        attempt = serializer.loads(state, max_age=600)
+    except (BadSignature, SignatureExpired):
         raise HTTPException(status_code=400, detail="Invalid sign-in state.")
+    nonce = str(attempt.get("nonce", "")) if isinstance(attempt, dict) else ""
+    cookie_name = f"embedforge_oauth_{nonce}"
+    if not nonce or not secrets.compare_digest(request.cookies.get(cookie_name, ""), nonce):
+        raise HTTPException(status_code=400, detail="Sign-in session expired. Please try again.")
     redirect_uri = f"{FRONTEND_URL}/api/auth/google/callback"
     async with httpx.AsyncClient(timeout=15) as client:
         token_response = await client.post("https://oauth2.googleapis.com/token", data={
@@ -396,7 +403,9 @@ async def google_callback(request: Request, code: str, state: str) -> RedirectRe
     existing_user = await active_user(request)
     if existing_user and existing_user["id"] == supabase_user["id"]:
         destination = safe_app_path(str(attempt.get("next", "/")))
-        return RedirectResponse(f"{FRONTEND_URL}{destination}", status_code=303)
+        response = RedirectResponse(f"{FRONTEND_URL}{destination}", status_code=303)
+        response.delete_cookie(cookie_name, path="/api/auth/google/callback")
+        return response
     if existing_user:
         existing_token = request.session.get("active_session_token")
         if existing_token:
@@ -406,11 +415,15 @@ async def google_callback(request: Request, code: str, state: str) -> RedirectRe
         claimed = await claim_active_session(supabase_user["id"], active_session_token)
     except HTTPException:
         request.session.clear()
-        return RedirectResponse(f"{FRONTEND_URL}/?sign_in_error=session_unavailable", status_code=303)
+        response = RedirectResponse(f"{FRONTEND_URL}/?sign_in_error=session_unavailable", status_code=303)
+        response.delete_cookie(cookie_name, path="/api/auth/google/callback")
+        return response
     if not claimed:
         request.session.clear()
         request.session["takeover_user"] = supabase_user
-        return RedirectResponse(f"{FRONTEND_URL}/?sign_in_error=active_session", status_code=303)
+        response = RedirectResponse(f"{FRONTEND_URL}/?sign_in_error=active_session", status_code=303)
+        response.delete_cookie(cookie_name, path="/api/auth/google/callback")
+        return response
     request.session["user"] = supabase_user
     request.session["active_session_token"] = active_session_token
     destination = safe_app_path(str(attempt.get("next", "/")))
@@ -419,7 +432,9 @@ async def google_callback(request: Request, code: str, state: str) -> RedirectRe
     if destination in {"/", "/philosophy", "/path", "/preview"}:
         destination = "/"
     separator = "&" if "?" in destination else "?"
-    return RedirectResponse(f"{FRONTEND_URL}{destination}{separator}signed_in=1", status_code=303)
+    response = RedirectResponse(f"{FRONTEND_URL}{destination}{separator}signed_in=1", status_code=303)
+    response.delete_cookie(cookie_name, path="/api/auth/google/callback")
+    return response
 
 
 @app.post("/api/auth/sign-out-other-devices")
