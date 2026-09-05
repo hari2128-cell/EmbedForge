@@ -22,6 +22,22 @@ const previewCards = [
   ['24', 'Watchdog timers', 'Reliable recovery patterns', '/notes/day-24.png'],
 ]
 
+type ProductStatus = 'available' | 'coming_soon' | 'sold_out' | 'archived'
+type Product = { id: string; title: string; description: string; status: ProductStatus; price?: number; previewCards?: typeof previewCards }
+
+const products: Product[] = [
+  {
+    id: '30-day-microcontroller-learning-kit',
+    title: '30-Day Microcontroller Challenge',
+    description: 'Thirty deliberate days across fundamentals, peripherals, Embedded C, debugging, and practical system thinking.',
+    status: 'available',
+    price: 49,
+    previewCards,
+  },
+  { id: 'coming-soon-01', title: 'Coming Soon', description: 'A new structured embedded-systems learning experience is being developed.', status: 'coming_soon' },
+  { id: 'coming-soon-02', title: 'Coming Soon', description: 'More practical learning resources and engineering challenges are on the way.', status: 'coming_soon' },
+]
+
 function InteractiveSignalDiagram() {
   return (
     <div className="signal-diagram">
@@ -152,6 +168,7 @@ function GlobalNav({ user, authOpen, setAuthOpen, accountOpen, setAccountOpen, b
           <div className="nav-links">
             <Link to="/philosophy">Philosophy</Link>
             <Link to="/path">The Path</Link>
+            <Link to="/#products">Products</Link>
             <Link to="/preview">Preview</Link>
             <Link to="/pricing">Pricing</Link>
           </div>
@@ -188,6 +205,7 @@ function GlobalNav({ user, authOpen, setAuthOpen, accountOpen, setAccountOpen, b
               <div style={{display: 'flex', flexDirection: 'column', gap: '24px'}}>
                 <Link to="/philosophy" onClick={() => setMenu(false)}>Philosophy</Link>
                 <Link to="/path" onClick={() => setMenu(false)}>The Path</Link>
+                <Link to="/#products" onClick={() => setMenu(false)}>Products</Link>
                 <Link to="/preview" onClick={() => setMenu(false)}>Preview</Link>
                 <Link to="/pricing" onClick={() => setMenu(false)}>Pricing</Link>
                 <hr style={{borderColor: 'var(--border-subtle)', opacity: 0.5, margin: '8px 0'}} />
@@ -308,7 +326,7 @@ function Home({ user, setAuthOpen }: any) {
         <div className="container">
           <div className="split-layout">
             <motion.div initial={{opacity:0, y:20}} animate={{opacity:1, y:0}} transition={{duration:0.6}}>
-              <p className="label-mono" style={{marginBottom: '24px'}}>30-Day Embedded Systems Learning Journey</p>
+              <p className="label-mono" style={{marginBottom: '24px'}}>Embedded Systems Learning Journey</p>
               <h1>From the first register<br/><em>to systems-level thinking.</em></h1>
               <p className="body-hero" style={{marginTop: '24px'}}>One deliberate path through microcontroller fundamentals, peripherals, Embedded C, debugging and practical projects.</p>
               <div className="hero-actions">
@@ -320,6 +338,27 @@ function Home({ user, setAuthOpen }: any) {
             <motion.div initial={{opacity:0, scale:0.95}} animate={{opacity:1, scale:1}} transition={{duration:0.8, delay:0.2}}>
               <InteractiveSignalDiagram />
             </motion.div>
+          </div>
+        </div>
+      </section>
+
+      <section id="products" className="section story-section">
+        <div className="container">
+          <div className="story-content">
+            <div className="story-header">
+              <p className="label-mono" style={{marginBottom: '16px'}}>LEARNING COLLECTION</p>
+              <h2>Curated journeys for embedded-systems thinkers.</h2>
+              <p className="body-large" style={{marginTop: '24px'}}>EmbedForge is a growing collection of focused, practical learning experiences.</p>
+            </div>
+            <div className="product-grid">
+              {products.map((product, index) => <article className={`product-card ${product.status}`} key={product.id}>
+                <span className="product-number">{String(index + 1).padStart(2, '0')}</span>
+                <p className="label-mono">{product.status === 'available' ? 'AVAILABLE NOW' : 'COMING SOON'}</p>
+                <h3>{product.title}</h3>
+                <p className="body-standard">{product.description}</p>
+                {product.status === 'available' ? <><p className="product-price">₹{product.price} <span>one-time access</span></p><button className="btn-primary" onClick={() => navigate('/pricing')}>Explore the Learning Kit <ArrowRight size={18}/></button></> : <span className="product-status">Coming Soon</span>}
+              </article>)}
+            </div>
           </div>
         </div>
       </section>
@@ -535,7 +574,7 @@ function Dashboard({ user, hasAccess, onSignIn }: { user: { name: string; email:
 
 type Material = { name: string; path: string; isFolder: boolean; url?: string }
 
-function LearningKit({ user, hasAccess, onSignIn }: { user: { name: string; email: string } | null; hasAccess: boolean; onSignIn: () => void }) {
+function LearningKit({ user, hasAccess, authLoading, onSignIn }: { user: { name: string; email: string } | null; hasAccess: boolean; authLoading: boolean; onSignIn: () => void }) {
   const [query, setQuery] = useSearchParams()
   const path = query.get('path') ?? ''
   const [items, setItems] = useState<Material[]>([])
@@ -552,6 +591,7 @@ function LearningKit({ user, hasAccess, onSignIn }: { user: { name: string; emai
       .finally(() => setLoading(false))
   }, [user, hasAccess, path])
 
+  if (authLoading) return <PageTransition><main className="dashboard-layout"><div className="container" style={{textAlign: 'center', paddingTop: '120px'}}><p className="label-mono">RESTORING YOUR SESSION</p><p className="body-large" style={{margin: '16px auto'}}>Loading your learning kit…</p></div></main></PageTransition>
   if (!user) return <PageTransition><main className="dashboard-layout"><div className="container" style={{textAlign: 'center', paddingTop: '120px'}}><LockKeyhole size={48} style={{color: 'var(--accent-cyan)', margin: '0 auto 32px'}} /><h2>Sign in to open your learning kit.</h2><button className="btn-primary" style={{marginTop: '32px'}} onClick={onSignIn}>Continue with Google <ArrowRight size={20}/></button></div></main></PageTransition>
   if (!hasAccess) return <PageTransition><main className="dashboard-layout"><div className="container" style={{textAlign: 'center', paddingTop: '120px'}}><LockKeyhole size={48} style={{color: 'var(--accent-cyan)', margin: '0 auto 32px'}} /><h2>Your learning kit unlocks after payment is verified.</h2><Link className="btn-primary" style={{marginTop: '32px'}} to="/pricing">Unlock the Complete Kit <ArrowRight size={20}/></Link></div></main></PageTransition>
 
@@ -611,6 +651,7 @@ function App() {
   const [checkoutLoading, setCheckoutLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [user, setUser] = useState<{name: string; email: string} | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
   const [hasAccess, setHasAccess] = useState(false)
   const [authMessage, setAuthMessage] = useState('')
   const [canTakeOver, setCanTakeOver] = useState(false)
@@ -621,7 +662,7 @@ function App() {
   const [couponStatus, setCouponStatus] = useState<{valid: boolean; message: string} | null>(null)
   const location = useLocation()
 
-  useEffect(() => { fetch('/api/auth/me', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(data => { setUser(data?.user ?? null); setHasAccess(Boolean(data?.hasAccess)) }).catch(() => undefined) }, [])
+  useEffect(() => { fetch('/api/auth/me', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(data => { setUser(data?.user ?? null); setHasAccess(Boolean(data?.hasAccess)) }).catch(() => undefined).finally(() => setAuthLoading(false)) }, [])
   useEffect(() => {
     const signInError = new URLSearchParams(location.search).get('sign_in_error')
     if (!signInError) return
@@ -691,7 +732,7 @@ function App() {
         <Route path="/preview" element={<Home user={user} setAuthOpen={setAuthOpen} />} />
         <Route path="/pricing" element={<Pricing user={user} setAuthOpen={setAuthOpen} beginCheckout={beginCheckout} checkoutLoading={checkoutLoading} phone={phone} setPhone={setPhone} message={message} coupon={coupon} setCoupon={setCoupon} couponStatus={couponStatus} applyCoupon={applyCoupon} couponLoading={couponLoading} />} />
         <Route path="/dashboard" element={<Dashboard user={user} hasAccess={hasAccess} onSignIn={() => setAuthOpen(true)} />} />
-        <Route path="/learning-kit" element={<LearningKit user={user} hasAccess={hasAccess} onSignIn={() => setAuthOpen(true)} />} />
+        <Route path="/learning-kit" element={<LearningKit user={user} hasAccess={hasAccess} authLoading={authLoading} onSignIn={() => setAuthOpen(true)} />} />
         <Route path="/privacy" element={<LegalPage type="privacy"/>} />
         <Route path="/terms" element={<LegalPage type="terms"/>} />
         <Route path="/refund" element={<LegalPage type="refund"/>} />
