@@ -161,6 +161,12 @@ function PageTransition({ children }: { children: React.ReactNode }) {
 function GlobalNav({ user, authOpen, setAuthOpen, accountOpen, setAccountOpen, beginSignIn, authenticating, signOut, authMessage, canTakeOver, signOutOtherDevices }: any) {
   const [menu, setMenu] = useState(false)
   const navigate = useNavigate()
+  useEffect(() => {
+    if (!menu) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = previousOverflow }
+  }, [menu])
   
   return (
     <>
@@ -190,7 +196,7 @@ function GlobalNav({ user, authOpen, setAuthOpen, accountOpen, setAccountOpen, b
               <button className="btn-secondary" onClick={() => setAuthOpen(true)}>Sign In</button>
             )}
           </div>
-          <button className="mobile-menu-btn" aria-label="Open navigation menu" onClick={() => setMenu(!menu)}>
+          <button className="mobile-menu-btn" aria-label={menu ? 'Close navigation menu' : 'Open navigation menu'} aria-expanded={menu} onClick={() => setMenu(!menu)}>
             MENU
           </button>
         </div>
@@ -526,7 +532,17 @@ type Material = { name: string; path: string; isFolder: boolean; url?: string }
 function isMarkdownFile(item: Material) { return /\.md(?:own)?$/i.test(item.name) }
 function isPdfFile(item: Material) { return /\.pdf$/i.test(item.name) }
 
-function MaterialViewer({ item, onClose, watermark }: { item: Material; onClose: () => void; watermark: string }) {
+function materialDisplayName(item: Material) {
+  const withoutExtension = item.name.replace(/\.[^.]+$/, '')
+  return withoutExtension.replace(/[_-]+/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase())
+}
+
+function materialContext(item: Material) {
+  const day = item.path.match(/day[_ -]?(\d+)/i)?.[1]
+  return day ? `Day ${String(Number(day)).padStart(2, '0')} · 30-Day Microcontroller Challenge` : '30-Day Microcontroller Challenge'
+}
+
+function MaterialViewer({ item, onClose, onPrevious, onNext, position, total, watermark }: { item: Material; onClose: () => void; onPrevious: () => void; onNext: () => void; position: number; total: number; watermark: string }) {
   const [markdown, setMarkdown] = useState('')
   const [loading, setLoading] = useState(isMarkdownFile(item))
   const [error, setError] = useState('')
@@ -536,7 +552,7 @@ function MaterialViewer({ item, onClose, watermark }: { item: Material; onClose:
     fetch(item.url).then(response => { if (!response.ok) throw new Error(); return response.text() }).then(setMarkdown).catch(() => setError('Unable to open this document. Please try again.')).finally(() => setLoading(false))
   }
   useEffect(() => { if (isMarkdownFile(item)) loadMarkdown() }, [item.path])
-  return <section className="material-viewer protected-content" aria-label={`Document viewer: ${item.name}`} onContextMenu={event => event.preventDefault()}><div className="material-viewer-bar"><button className="btn-secondary material-back" onClick={onClose}>← Back</button><div><p className="label-mono">SECURE DOCUMENT VIEWER</p><h2>{item.name}</h2></div></div><div className="material-watermark" aria-hidden="true">Licensed to {watermark}</div><div className="material-viewer-frame">{loading ? <div className="material-loading"><p className="label-mono">LOADING DOCUMENT</p><p className="body-standard">Preparing protected content…</p></div> : error ? <div className="material-loading"><p style={{color: '#ff8585'}}>{error}</p><button className="btn-secondary" onClick={loadMarkdown}>Try again</button></div> : isMarkdownFile(item) ? <article className="markdown-content"><ReactMarkdown remarkPlugins={[remarkGfm]} components={{a: ({href, children}) => <a href={href} target="_blank" rel="noreferrer noopener">{children}</a>}}>{markdown}</ReactMarkdown></article> : item.url ? <iframe title={item.name} src={item.url} className="document-frame" /> : <div className="material-loading"><p style={{color: '#ff8585'}}>Unable to open this document. Please try again.</p></div>}</div></section>
+  return <section className="material-viewer protected-content" aria-label={`Learning material viewer: ${materialDisplayName(item)}`} onContextMenu={event => event.preventDefault()}><div className="material-viewer-bar"><button className="btn-secondary material-back" onClick={onClose}>← Back to Learning Material</button><div><p className="label-mono">SECURE LEARNING MATERIAL</p><h2>{materialDisplayName(item)}</h2><p className="material-context">{materialContext(item)}</p></div></div><div className="material-watermark" aria-hidden="true">Licensed access · {watermark}</div><div className="material-viewer-frame">{loading ? <div className="material-loading"><p className="label-mono">LOADING DOCUMENT</p><p className="body-standard">Preparing protected content…</p></div> : error ? <div className="material-loading"><p style={{color: '#ff8585'}}>{error}</p><button className="btn-secondary" onClick={loadMarkdown}>Try again</button></div> : isMarkdownFile(item) ? <article className="markdown-content"><ReactMarkdown remarkPlugins={[remarkGfm]} components={{a: ({href, children}) => <a href={href} target="_blank" rel="noreferrer noopener">{children}</a>}}>{markdown}</ReactMarkdown></article> : item.url ? <iframe title={item.name} src={item.url} className="document-frame" /> : <div className="material-loading"><p style={{color: '#ff8585'}}>Unable to open this document. Please try again.</p></div>}</div>{total > 1 && <nav className="material-navigation" aria-label="Material navigation"><button className="btn-secondary" onClick={onPrevious} disabled={position === 0}>← Previous</button><span className="label-mono">MATERIAL {position + 1} / {total}</span><button className="btn-secondary" onClick={onNext} disabled={position === total - 1}>Next →</button></nav>}</section>
 }
 
 function LearningKit({ user, hasAccess, authLoading, onSignIn }: { user: { name: string; email: string } | null; hasAccess: boolean; authLoading: boolean; onSignIn: () => void }) {
@@ -555,7 +571,11 @@ function LearningKit({ user, hasAccess, authLoading, onSignIn }: { user: { name:
   if (!hasAccess) return <PageTransition><main className="dashboard-layout"><div className="container material-state"><LockKeyhole size={48} /><h2>Your learning kit unlocks after payment is verified.</h2><Link className="btn-primary" to={`/products/${featuredProduct.id}#pricing`}>Unlock the Complete Kit <ArrowRight size={20}/></Link></div></main></PageTransition>
 
   const parentPath = path.split('/').slice(0, -1).join('/')
-  return <PageTransition><main className="dashboard-layout"><header className="dash-header"><div className="container"><p className="label-mono" style={{marginBottom: '16px'}}>YOUR LEARNING KIT</p><h1>30-Day Microcontroller Learning Kit</h1><p className="body-standard" style={{marginTop: '16px'}}>Protected materials are available only while your signed-in session is active.</p></div></header><section className="section"><div className="container materials-container">{selected ? <MaterialViewer item={selected} onClose={() => setSelected(null)} watermark={user.email} /> : <><div className="materials-toolbar">{path ? <button className="btn-secondary material-back" onClick={() => setQuery(parentPath ? {path: parentPath} : {})}>← Back</button> : <span />}<p className="label-mono">{path || 'START HERE'}</p></div>{loading ? <div className="materials-grid materials-skeleton">{Array.from({length: 5}, (_, index) => <div className="material-card" key={index} />)}</div> : error ? <div className="material-error"><p>{error}</p><button className="btn-secondary" onClick={loadItems}>Try again</button></div> : <motion.div className="materials-grid" initial="hidden" animate="visible" variants={{hidden: {}, visible: {transition: {staggerChildren: .045}}}}>{items.map(item => <motion.div key={item.path} variants={{hidden: {opacity: 0, y: 10}, visible: {opacity: 1, y: 0}}} transition={{duration: .22}}>{item.isFolder ? <button className="material-card" onClick={() => setQuery({path: item.path})}><span>FOLDER</span><h3>{item.name}</h3><p>Open this section</p><ArrowRight size={18}/></button> : <button className="material-card" onClick={() => setSelected(item)}><span>{isMarkdownFile(item) ? 'README' : isPdfFile(item) ? 'PDF' : 'FILE'}</span><h3 title={item.name}>{item.name}</h3><p>Open securely</p><ArrowRight size={18}/></button>}</motion.div>)}</motion.div>}{!loading && !error && items.length === 0 && <p className="body-standard">This folder is empty.</p>}</>}</div></section></main></PageTransition>
+  const files = items.filter(item => !item.isFolder)
+  const selectedPosition = selected ? files.findIndex(item => item.path === selected.path) : -1
+  const openMaterial = (item: Material) => { setSelected(item); window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior }) }
+  const moveMaterial = (direction: -1 | 1) => { const target = files[selectedPosition + direction]; if (target) openMaterial(target) }
+  return <PageTransition><main className="dashboard-layout"><header className="dash-header"><div className="container"><p className="label-mono" style={{marginBottom: '16px'}}>YOUR LEARNING KIT</p><h1>30-Day Microcontroller Learning Kit</h1><p className="body-standard" style={{marginTop: '16px'}}>Protected materials are available only while your signed-in session is active.</p></div></header><section className="section"><div className="container materials-container">{selected ? <MaterialViewer item={selected} onClose={() => setSelected(null)} onPrevious={() => moveMaterial(-1)} onNext={() => moveMaterial(1)} position={selectedPosition} total={files.length} watermark={user.email} /> : <><div className="materials-toolbar">{path ? <button className="btn-secondary material-back" onClick={() => setQuery(parentPath ? {path: parentPath} : {})}>← Back</button> : <span />}<p className="label-mono">{path || 'START HERE'}</p></div>{loading ? <div className="materials-grid materials-skeleton">{Array.from({length: 5}, (_, index) => <div className="material-card" key={index} />)}</div> : error ? <div className="material-error"><p>{error}</p><button className="btn-secondary" onClick={loadItems}>Try again</button></div> : <motion.div className="materials-grid" initial="hidden" animate="visible" variants={{hidden: {}, visible: {transition: {staggerChildren: .045}}}}>{items.map(item => <motion.div key={item.path} variants={{hidden: {opacity: 0, y: 10}, visible: {opacity: 1, y: 0}}} transition={{duration: .22}}>{item.isFolder ? <button className="material-card" onClick={() => setQuery({path: item.path})}><span>FOLDER</span><h3>{item.name}</h3><p>Open this section</p><ArrowRight size={18}/></button> : <button className="material-card" onClick={() => openMaterial(item)}><span>{isMarkdownFile(item) ? 'README' : isPdfFile(item) ? 'PDF' : 'FILE'}</span><h3 title={item.name}>{materialDisplayName(item)}</h3><p>Open securely</p><ArrowRight size={18}/></button>}</motion.div>)}</motion.div>}{!loading && !error && items.length === 0 && <p className="body-standard">This folder is empty.</p>}</>}</div></section></main></PageTransition>
 }
 
 const legalCopy: Record<string, { title: string; intro: string; sections: [string, string][] }> = {

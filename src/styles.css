@@ -1147,7 +1147,7 @@ footer {
   .hero-price { line-height:1.7; }
   .section { padding-top:clamp(48px, 12vw, 68px); padding-bottom:clamp(48px, 12vw, 68px); }
   .story-header { margin-bottom:32px; }
-  .svg-ecosystem-container { width:100%; max-width:430px; margin-top:12px; }
+  .svg-ecosystem-container { width:100%; max-width:none; margin-top:12px; }
   .stage-timeline { gap:14px; }
   .stage-card { grid-template-columns:54px minmax(0, 1fr); gap:14px; padding:20px; }
   .stage-number { font-size:28px; }
@@ -1231,14 +1231,19 @@ footer {
 .material-error { border:1px solid var(--border-subtle); background:var(--bg-surface); color:#ff8585; }
 .material-state { padding-top:120px; color:var(--accent-cyan); }
 .material-state h2, .material-state .body-large { color:var(--text-high); }
-.material-viewer { width:100%; }
+.material-viewer { width:100%; max-width:100%; }
 .protected-content { user-select:none; -webkit-user-select:none; }
 .protected-content img { -webkit-user-drag:none; user-drag:none; }
 .material-watermark { margin:0 0 10px; color:var(--text-faint); font-family:var(--font-mono); font-size:11px; letter-spacing:.04em; text-align:right; opacity:.55; overflow-wrap:anywhere; }
-.material-viewer-bar { display:flex; align-items:flex-start; gap:24px; margin-bottom:24px; }
+.material-viewer-bar { display:flex; align-items:flex-start; gap:24px; margin-bottom:20px; }
 .material-viewer-bar h2 { margin-top:8px; font-size:clamp(22px, 3vw, 34px); overflow-wrap:anywhere; }
-.material-viewer-frame { min-height:70vh; overflow:hidden; border:1px solid var(--border-active); background:var(--bg-surface); }
-.document-frame { display:block; width:100%; min-height:70vh; border:0; background:white; }
+.material-context { margin:8px 0 0; color:var(--text-muted); font-family:var(--font-mono); font-size:12px; letter-spacing:.04em; }
+.material-viewer-frame { display:grid; min-height:70vh; max-width:100%; overflow:hidden; border:1px solid var(--border-active); border-radius:10px; background:var(--bg-surface); box-shadow:0 16px 36px rgba(0,0,0,.25), 0 0 20px color-mix(in srgb, var(--accent-cyan) 7%, transparent); }
+.document-frame { display:block; width:100%; min-height:70vh; max-width:100%; border:0; background:white; }
+.material-navigation { display:grid; grid-template-columns:minmax(0, 1fr) auto minmax(0, 1fr); align-items:center; gap:16px; margin-top:20px; padding:16px; border:1px solid var(--border-subtle); background:var(--bg-surface); }
+.material-navigation .btn-secondary { min-height:46px; width:auto; }
+.material-navigation .btn-secondary:last-child { justify-self:end; }
+.material-navigation > span { text-align:center; color:var(--accent-cyan); white-space:nowrap; }
 .markdown-content { max-width:900px; margin:0 auto; padding:clamp(24px, 5vw, 64px); color:var(--text-primary); overflow-wrap:anywhere; }
 .markdown-content h1, .markdown-content h2, .markdown-content h3 { max-width:none; margin:1.5em 0 .6em; }
 .markdown-content h1:first-child { margin-top:0; }
@@ -1285,8 +1290,13 @@ footer {
   .phase-group { min-width:min(320px, calc(100vw - 48px)); }
   .materials-grid { grid-template-columns:1fr; }
   .materials-toolbar { align-items:flex-start; flex-direction:column; }
-  .material-viewer-bar { flex-direction:column; }
+  .material-viewer-bar { flex-direction:column; gap:16px; }
+  .material-viewer-bar .material-back { width:100%; }
   .material-viewer-frame, .document-frame { min-height:62vh; }
+  .material-navigation { grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); gap:10px; padding:12px; }
+  .material-navigation > span { grid-column:1 / -1; grid-row:1; font-size:11px; }
+  .material-navigation .btn-secondary { grid-row:2; width:100%; padding-inline:10px; }
+  .material-navigation .btn-secondary:last-child { justify-self:stretch; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1302,7 +1312,8 @@ footer {
   inset: 0;
   background: rgba(0,0,0,0.5);
   backdrop-filter: blur(4px);
-  z-index: 99;
+  z-index: 110;
+  isolation: isolate;
 }
 
 .mobile-drawer {
@@ -1310,10 +1321,12 @@ footer {
   top: 0; right: 0; bottom: 0;
   width: 80%;
   max-width: 320px;
+  box-sizing: border-box;
   background: var(--bg-surface-elevated);
-  z-index: 100;
+  z-index: 1;
   padding: 32px 24px;
   box-shadow: -10px 0 30px rgba(0,0,0,0.5);
+  overflow-y: auto;
 }
 
 .mobile-drawer a {
@@ -1326,7 +1339,7 @@ footer {
 @media (max-width: 639px) {
   .why-embedded-orbit {
     width:100%;
-    max-width:430px;
+    max-width:none;
     aspect-ratio:420 / 440;
     margin:12px 0 0;
   }
