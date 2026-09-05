@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Link, Navigate, Route, Routes, useSearchParams, useNavigate, useLocation, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowRight, Check, ChevronLeft, ChevronRight, CircuitBoard, LockKeyhole, ShieldCheck } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import './styles.css'
 
 declare global { interface Window { Cashfree?: (options: { mode: 'sandbox' | 'production' }) => { checkout: (options: { paymentSessionId: string; redirectTarget: '_self' | '_blank' }) => void } } }
@@ -318,7 +320,11 @@ function ProductCollection({ navigate }: { navigate: (path: string) => void }) {
   return <section id="products" className="section story-section experience-section collection-section"><div className="container"><div className="story-line-container"><div className="story-line-fill" style={{height: '100%'}} /></div><div className="story-content"><motion.div className="story-header" initial={{opacity:0, y:16}} whileInView={{opacity:1, y:0}} viewport={{once:true, margin:'-80px'}} transition={{duration:.45}}><p className="label-mono" style={{marginBottom: '16px'}}>THE EMBEDFORGE COLLECTION</p><h2>Structured learning experiences for systems thinkers.</h2><p className="body-large" style={{marginTop: '24px'}}>The 30-Day Challenge is the first product in a growing collection built to develop practical embedded-systems thinking.</p></motion.div><div className="product-grid">{products.map((product, index) => <motion.article className={`product-card ${product.status}`} key={product.id} initial={{opacity:0, y:18}} whileInView={{opacity:1, y:0}} viewport={{once:true, margin:'-60px'}} transition={{duration:.38, delay:index * .1}}><span className="product-number">{String(index + 1).padStart(2, '0')}</span><p className="label-mono">{product.status === 'available' ? 'AVAILABLE NOW' : 'COMING SOON'}</p><h3>{product.title}</h3><p className="body-standard">{product.description}</p>{product.status === 'available' ? <><p className="product-price">₹{product.price} <span>one-time access</span></p><button className="btn-primary" onClick={() => navigate(`/products/${product.id}`)}>Explore Product <ArrowRight size={18}/></button></> : <span className="product-status">Coming Soon</span>}</motion.article>)}</div></div></div></section>
 }
 
-function Home({ user, setAuthOpen, ...purchaseProps }: any) {
+function EmbedForgeApproach() {
+  return <section className="section story-section experience-section philosophy-bridge"><div className="container"><div className="story-line-container"><motion.div className="story-line-fill" initial={{scaleY: 0}} whileInView={{scaleY: 1}} viewport={{once: true, margin: '-80px'}} transition={{duration: .42}} style={{height: '100%'}} /></div><motion.div className="story-content story-header" initial={{opacity:0, y:16}} whileInView={{opacity:1, y:0}} viewport={{once:true, margin:'-80px'}} transition={{duration:.45, delay:.05}}><p className="label-mono" style={{marginBottom: '16px'}}>THE EMBEDFORGE APPROACH</p><h2>Learn the system, not just the steps.</h2><p className="body-large" style={{marginTop: '24px'}}>Each EmbedForge product is built around deliberate progression: understand the hardware, make decisions with context, and apply the ideas in practical work.</p></motion.div></div></section>
+}
+
+function Home({ setAuthOpen }: any) {
   const navigate = useNavigate()
   const { hash, pathname } = useLocation()
 
@@ -373,13 +379,8 @@ function Home({ user, setAuthOpen, ...purchaseProps }: any) {
         </div>
       </section>
 
-      <section className="section story-section experience-section philosophy-bridge"><div className="container"><div className="story-line-container"><div className="story-line-fill" style={{height: '100%'}} /></div><motion.div className="story-content story-header" initial={{opacity:0, y:16}} whileInView={{opacity:1, y:0}} viewport={{once:true, margin:'-80px'}} transition={{duration:.45}}><p className="label-mono" style={{marginBottom: '16px'}}>THE EMBEDFORGE APPROACH</p><h2>Learn the system, not just the steps.</h2><p className="body-large" style={{marginTop: '24px'}}>Each EmbedForge product is built around deliberate progression: understand the hardware, make decisions with context, and apply the ideas in practical work.</p></motion.div></div></section>
-
       <FeaturedProductIntro product={featuredProduct}/>
-      <ProductLearningPath product={featuredProduct}/>
-      <section className="preview-bridge"><div className="container"><span className="label-mono">PREVIEW AVAILABLE</span><a href="#preview" className="btn-text">See the actual learning material <ArrowRight size={18}/></a></div></section>
-      <ProductPreview product={featuredProduct} user={user} setAuthOpen={setAuthOpen}/>
-      <ProductPricing product={featuredProduct} user={user} setAuthOpen={setAuthOpen} {...purchaseProps}/>
+      <EmbedForgeApproach/>
       <ProductCollection navigate={navigate}/>
 
     </main>
@@ -509,29 +510,39 @@ function Dashboard({ user, hasAccess, onSignIn }: { user: { name: string; email:
 
 type Material = { name: string; path: string; isFolder: boolean; url?: string }
 
+function isMarkdownFile(item: Material) { return /\.md(?:own)?$/i.test(item.name) }
+function isPdfFile(item: Material) { return /\.pdf$/i.test(item.name) }
+
+function MaterialViewer({ item, onClose }: { item: Material; onClose: () => void }) {
+  const [markdown, setMarkdown] = useState('')
+  const [loading, setLoading] = useState(isMarkdownFile(item))
+  const [error, setError] = useState('')
+  const loadMarkdown = () => {
+    if (!item.url) return
+    setLoading(true); setError('')
+    fetch(item.url).then(response => { if (!response.ok) throw new Error(); return response.text() }).then(setMarkdown).catch(() => setError('Unable to open this document. Please try again.')).finally(() => setLoading(false))
+  }
+  useEffect(() => { if (isMarkdownFile(item)) loadMarkdown() }, [item.path])
+  return <section className="material-viewer" aria-label={`Document viewer: ${item.name}`}><div className="material-viewer-bar"><button className="btn-secondary material-back" onClick={onClose}>← Back</button><div><p className="label-mono">SECURE DOCUMENT VIEWER</p><h2>{item.name}</h2></div></div><div className="material-viewer-frame">{loading ? <div className="material-loading"><p className="label-mono">LOADING DOCUMENT</p><p className="body-standard">Preparing protected content…</p></div> : error ? <div className="material-loading"><p style={{color: '#ff8585'}}>{error}</p><button className="btn-secondary" onClick={loadMarkdown}>Try again</button></div> : isMarkdownFile(item) ? <article className="markdown-content"><ReactMarkdown remarkPlugins={[remarkGfm]} components={{a: ({href, children}) => <a href={href} target="_blank" rel="noreferrer noopener">{children}</a>}}>{markdown}</ReactMarkdown></article> : item.url ? <iframe title={item.name} src={item.url} className="document-frame" /> : <div className="material-loading"><p style={{color: '#ff8585'}}>Unable to open this document. Please try again.</p></div>}</div></section>
+}
+
 function LearningKit({ user, hasAccess, authLoading, onSignIn }: { user: { name: string; email: string } | null; hasAccess: boolean; authLoading: boolean; onSignIn: () => void }) {
   const [query, setQuery] = useSearchParams()
   const path = query.get('path') ?? ''
   const [items, setItems] = useState<Material[]>([])
+  const [selected, setSelected] = useState<Material | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const loadItems = () => { setLoading(true); setError(''); fetch(`/api/access/materials?path=${encodeURIComponent(path)}`, { credentials: 'include' }).then(async response => { if (!response.ok) throw new Error(); return response.json() }).then(data => setItems((data.items ?? []).filter((item: Material) => !/emptyFolderPlaceholder/i.test(item.name)))).catch(() => setError('Unable to load the learning materials. Please try again.')).finally(() => setLoading(false)) }
+  useEffect(() => { if (user && hasAccess) loadItems() }, [user, hasAccess, path])
+  useEffect(() => { setSelected(null) }, [path])
 
-  useEffect(() => {
-    if (!user || !hasAccess) return
-    setLoading(true); setError('')
-    fetch(`/api/access/materials?path=${encodeURIComponent(path)}`, { credentials: 'include' })
-      .then(async response => { if (!response.ok) throw new Error(); return response.json() })
-      .then(data => setItems(data.items ?? []))
-      .catch(() => setError('Unable to load the learning materials. Please try again.'))
-      .finally(() => setLoading(false))
-  }, [user, hasAccess, path])
-
-  if (authLoading) return <PageTransition><main className="dashboard-layout"><div className="container" style={{textAlign: 'center', paddingTop: '120px'}}><p className="label-mono">RESTORING YOUR SESSION</p><p className="body-large" style={{margin: '16px auto'}}>Loading your learning kit…</p></div></main></PageTransition>
-  if (!user) return <PageTransition><main className="dashboard-layout"><div className="container" style={{textAlign: 'center', paddingTop: '120px'}}><LockKeyhole size={48} style={{color: 'var(--accent-cyan)', margin: '0 auto 32px'}} /><h2>Sign in to open your learning kit.</h2><button className="btn-primary" style={{marginTop: '32px'}} onClick={onSignIn}>Continue with Google <ArrowRight size={20}/></button></div></main></PageTransition>
-  if (!hasAccess) return <PageTransition><main className="dashboard-layout"><div className="container" style={{textAlign: 'center', paddingTop: '120px'}}><LockKeyhole size={48} style={{color: 'var(--accent-cyan)', margin: '0 auto 32px'}} /><h2>Your learning kit unlocks after payment is verified.</h2><Link className="btn-primary" style={{marginTop: '32px'}} to="/pricing">Unlock the Complete Kit <ArrowRight size={20}/></Link></div></main></PageTransition>
+  if (authLoading) return <PageTransition><main className="dashboard-layout"><div className="container material-state"><p className="label-mono">RESTORING YOUR SESSION</p><p className="body-large">Loading your learning kit…</p></div></main></PageTransition>
+  if (!user) return <PageTransition><main className="dashboard-layout"><div className="container material-state"><LockKeyhole size={48} /><h2>Sign in to open your learning kit.</h2><button className="btn-primary" onClick={onSignIn}>Continue with Google <ArrowRight size={20}/></button></div></main></PageTransition>
+  if (!hasAccess) return <PageTransition><main className="dashboard-layout"><div className="container material-state"><LockKeyhole size={48} /><h2>Your learning kit unlocks after payment is verified.</h2><Link className="btn-primary" to={`/products/${featuredProduct.id}#pricing`}>Unlock the Complete Kit <ArrowRight size={20}/></Link></div></main></PageTransition>
 
   const parentPath = path.split('/').slice(0, -1).join('/')
-  return <PageTransition><main className="dashboard-layout"><header className="dash-header"><div className="container"><p className="label-mono" style={{marginBottom: '16px'}}>YOUR LEARNING KIT</p><h1>30-Day Microcontroller Learning Kit</h1><p className="body-standard" style={{marginTop: '16px'}}>Files are available only while your signed-in device session is active.</p></div></header><section className="section"><div className="container" style={{maxWidth: '900px'}}>{path && <button className="btn-secondary" onClick={() => setQuery(parentPath ? {path: parentPath} : {})} style={{marginBottom: '24px'}}>← Back</button>}<p className="label-mono" style={{marginBottom: '16px'}}>{path || 'START HERE'}</p>{loading ? <p className="body-standard">Loading materials…</p> : error ? <p style={{color: '#ff6b6b'}}>{error}</p> : <div className="dashboard-stage-grid">{items.map(item => item.isFolder ? <button key={item.path} className="dashboard-stage" onClick={() => setQuery({path: item.path})} style={{textAlign: 'left'}}><span>FOLDER</span><h3>{item.name}</h3><p>Open this section</p><ArrowRight size={16}/></button> : <a key={item.path} className="dashboard-stage" href={item.url} target="_blank" rel="noreferrer"><span>FILE</span><h3>{item.name}</h3><p>Open securely</p><ArrowRight size={16}/></a>)}</div>}{!loading && !error && items.length === 0 && <p className="body-standard">This folder is empty.</p>}</div></section></main></PageTransition>
+  return <PageTransition><main className="dashboard-layout"><header className="dash-header"><div className="container"><p className="label-mono" style={{marginBottom: '16px'}}>YOUR LEARNING KIT</p><h1>30-Day Microcontroller Learning Kit</h1><p className="body-standard" style={{marginTop: '16px'}}>Protected materials are available only while your signed-in session is active.</p></div></header><section className="section"><div className="container materials-container">{selected ? <MaterialViewer item={selected} onClose={() => setSelected(null)} /> : <><div className="materials-toolbar">{path ? <button className="btn-secondary material-back" onClick={() => setQuery(parentPath ? {path: parentPath} : {})}>← Back</button> : <span />}<p className="label-mono">{path || 'START HERE'}</p></div>{loading ? <div className="materials-grid materials-skeleton">{Array.from({length: 5}, (_, index) => <div className="material-card" key={index} />)}</div> : error ? <div className="material-error"><p>{error}</p><button className="btn-secondary" onClick={loadItems}>Try again</button></div> : <motion.div className="materials-grid" initial="hidden" animate="visible" variants={{hidden: {}, visible: {transition: {staggerChildren: .045}}}}>{items.map(item => <motion.div key={item.path} variants={{hidden: {opacity: 0, y: 10}, visible: {opacity: 1, y: 0}}} transition={{duration: .22}}>{item.isFolder ? <button className="material-card" onClick={() => setQuery({path: item.path})}><span>FOLDER</span><h3>{item.name}</h3><p>Open this section</p><ArrowRight size={18}/></button> : <button className="material-card" onClick={() => setSelected(item)}><span>{isMarkdownFile(item) ? 'README' : isPdfFile(item) ? 'PDF' : 'FILE'}</span><h3 title={item.name}>{item.name}</h3><p>Open securely</p><ArrowRight size={18}/></button>}</motion.div>)}</motion.div>}{!loading && !error && items.length === 0 && <p className="body-standard">This folder is empty.</p>}</>}</div></section></main></PageTransition>
 }
 
 const legalCopy: Record<string, { title: string; intro: string; sections: [string, string][] }> = {

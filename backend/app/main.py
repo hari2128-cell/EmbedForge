@@ -255,7 +255,12 @@ async def list_materials(prefix: str) -> list[dict[str, object]]:
         )
         if response.status_code >= 400:
             raise HTTPException(status_code=503, detail="Unable to load learning materials.")
-        raw_items = response.json()
+        # Supabase's optional empty-folder marker is an implementation detail,
+        # never a learning material that should appear in the customer UI.
+        raw_items = [
+            item for item in response.json()
+            if str(item.get("name", "")).lower() not in {".emptyfolderplaceholder", "emptyfolderplaceholder"}
+        ]
         files = [f"{prefix}/{item['name']}".strip("/") for item in raw_items if item.get("id")]
         signed: dict[str, str] = {}
         if files:
