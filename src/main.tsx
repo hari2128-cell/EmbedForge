@@ -170,7 +170,7 @@ function GlobalNav({ user, authOpen, setAuthOpen, accountOpen, setAccountOpen, b
   
   return (
     <>
-      <nav>
+      <nav className="site-nav">
         <div className="nav-container">
           <Link className="brand" to="/"><CircuitBoard size={24}/> EMBED<span style={{color: 'var(--text-high)'}}>FORGE</span></Link>
           <div className="nav-links">

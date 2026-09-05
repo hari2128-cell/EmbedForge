@@ -286,6 +286,14 @@ h3 {
   .story-content {
     padding-left: 32px;
   }
+  #why-embedded .split-layout {
+    align-items:start;
+    gap:clamp(24px, 7vw, 36px);
+  }
+  #why-embedded .svg-ecosystem-container {
+    width:100%;
+    margin:0;
+  }
   .preview-bridge .container {
     padding-left: 32px;
     align-items: flex-start;
@@ -308,7 +316,7 @@ h3 {
 }
 
 /* Navigation */
-nav {
+.site-nav {
   position: fixed;
   top: 0;
   left: 0;
@@ -1340,7 +1348,9 @@ footer {
   .why-embedded-orbit {
     width:100%;
     max-width:none;
-    aspect-ratio:420 / 440;
-    margin:12px 0 0;
+    aspect-ratio:1 / 1.02;
+    margin:0;
   }
+  .mobile-eco .eco-domain text { font-size:12px; }
+  .mobile-eco .eco-core text { font-size:15px; }
 }
