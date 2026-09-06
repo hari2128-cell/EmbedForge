@@ -419,6 +419,7 @@ function ProductPreview({ product, user, setAuthOpen }: { product: Product; user
 }
 
 function ProductPricing({ product, beginCheckout, checkoutLoading, phone, setPhone, message, setAuthOpen, user, hasAccess, coupon, setCoupon, couponStatus, applyCoupon, removeCoupon, couponLoading }: any) {
+  const payableAmount = couponStatus?.valid ? couponStatus.amount : product.price
   return <section id="pricing" className="section story-section"><div className="container"><div className="pricing-layout">
           <div>
             <p className="label-mono" style={{marginBottom: '16px'}}>PRODUCT PRICING</p>
@@ -427,16 +428,16 @@ function ProductPricing({ product, beginCheckout, checkoutLoading, phone, setPho
           </div>
           
           <div className="purchase-panel">
-            <div className="price-val">{couponStatus?.valid ? <><s>₹{product.price}</s> ₹29</> : `₹${product.price}`}</div>
+            <div className="price-val">{couponStatus?.valid ? <><s>₹{product.price}</s> ₹{payableAmount}</> : `₹${product.price}`}</div>
             <p className="label-mono" style={{marginTop: '16px'}}>ONE-TIME PURCHASE</p>
             {hasAccess ? <div className="owned-product-state"><p className="body-standard">Your verified access to this product is active.</p><a className="btn-primary" href="/api/access/tool">Go to Material <ArrowRight size={20} /></a></div> : <>
             <label className="coupon-label" htmlFor="coupon">Have a coupon?</label>
             <div className="coupon-row">
-              <input id="coupon" className="phone-input" placeholder="Enter coupon code" value={coupon} onChange={e => setCoupon(e.target.value.toUpperCase())} />
+              <input id="coupon" className="phone-input" placeholder="Enter coupon code" value={coupon} onChange={e => { setCoupon(e.target.value.toUpperCase()); if (couponStatus) removeCoupon(false) }} />
               <button className="btn-secondary" type="button" onClick={() => applyCoupon(product.id)} disabled={couponLoading || !coupon.trim()}>{couponLoading ? 'Checking…' : 'Apply'}</button>
               {(coupon || couponStatus) && <button className="btn-secondary coupon-remove" type="button" onClick={removeCoupon}>Remove</button>}
             </div>
-            {couponStatus && <p className={couponStatus.valid ? 'coupon-success' : 'coupon-error'} role="status">{couponStatus.message}</p>}
+            {couponStatus && <div className={couponStatus.valid ? 'coupon-success' : 'coupon-error'} role="status"><p>{couponStatus.message}</p>{couponStatus.valid && <p className="coupon-price-summary">₹{product.price} <span>→</span> ₹{payableAmount} <small>You save ₹{couponStatus.discount}</small></p>}</div>}
             
             <div className="purchase-features">
               {[
@@ -455,7 +456,7 @@ function ProductPricing({ product, beginCheckout, checkoutLoading, phone, setPho
 
             <input type="tel" className="phone-input" placeholder="Enter your 10-digit mobile number" value={phone} onChange={e => setPhone(e.target.value)} />
             <button className="btn-primary" style={{width: '100%'}} onClick={() => { if(!user) setAuthOpen(true); else beginCheckout(product.id); }} disabled={checkoutLoading}>
-              {checkoutLoading ? 'Preparing Secure Checkout...' : `Pay ₹${couponStatus?.valid ? 29 : product.price}`} <ArrowRight size={20} />
+              {checkoutLoading ? 'Preparing Secure Checkout...' : `Pay ₹${payableAmount}`} <ArrowRight size={20} />
             </button>
             {message && <p style={{color: '#ff6b6b', marginTop: '16px', fontSize: '14px', textAlign: 'center'}}>{message}</p>}
             
@@ -638,7 +639,7 @@ function App() {
   const [phone, setPhone] = useState('')
   const [coupon, setCoupon] = useState('')
   const [couponLoading, setCouponLoading] = useState(false)
-  const [couponStatus, setCouponStatus] = useState<{valid: boolean; message: string} | null>(null)
+  const [couponStatus, setCouponStatus] = useState<{valid: boolean; message: string; amount?: number; discount?: number} | null>(null)
   const location = useLocation()
 
   useEffect(() => { fetch('/api/auth/me', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(data => { setUser(data?.user ?? null); setHasAccess(Boolean(data?.hasAccess)) }).catch(() => undefined).finally(() => setAuthLoading(false)) }, [])
@@ -683,6 +684,7 @@ function App() {
       const response = await fetch('/api/payments/checkout', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ productId, phone, coupon: couponStatus?.valid ? coupon : '' }) })
       if (response.status === 401) { setAuthOpen(true); return }
       const data = await response.json().catch(() => null)
+      if (response.status === 409) { setCoupon(''); setCouponStatus(null) }
       if (!response.ok) throw new Error(data?.detail || 'Checkout is temporarily unavailable. Please try again shortly.')
       const { paymentSessionId, paymentMode } = data as { paymentSessionId?: string; paymentMode?: 'sandbox' | 'production' }
       if (!paymentSessionId || !window.Cashfree) throw new Error('Checkout is temporarily unavailable.')
@@ -696,11 +698,11 @@ function App() {
       const response = await fetch('/api/payments/coupon', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ productId, coupon }) })
       const data = await response.json().catch(() => null)
       if (!response.ok) throw new Error(data?.detail || 'Unable to validate this coupon right now.')
-      setCouponStatus({valid: true, message: 'Coupon applied — you saved ₹20 (40.82% OFF). Total: ₹29.'})
+      setCouponStatus({valid: true, message: 'Coupon applied ✓', amount: Number(data.amount), discount: Number(data.discount)})
     } catch (error) { setCouponStatus({valid: false, message: error instanceof Error ? error.message : 'Invalid coupon code.'}) }
     finally { setCouponLoading(false) }
   }
-  const removeCoupon = () => { setCoupon(''); setCouponStatus(null); setMessage('') }
+  const removeCoupon = (clearCode = true) => { if (clearCode) setCoupon(''); setCouponStatus(null); setMessage('') }
 
   return <>
     <ScrollManager />

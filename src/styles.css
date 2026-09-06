@@ -843,6 +843,10 @@ h3 {
 
 .coupon-label { display:block; margin:24px 0 8px; color:var(--text-primary); font-size:14px; font-weight:700; }
 .coupon-row { display:flex; gap:10px; align-items:flex-start; }
+.coupon-success p, .coupon-error p { margin:0; }
+.coupon-price-summary { display:flex; align-items:baseline; flex-wrap:wrap; gap:8px; margin-top:8px !important; font-family:var(--font-mono); color:var(--text-high); }
+.coupon-price-summary span { color:var(--accent-cyan); }
+.coupon-price-summary small { color:var(--accent-cyan); font-family:var(--font-sans); font-size:12px; }
 .coupon-row .phone-input { margin-bottom:0; min-width:0; }
 .coupon-row .btn-secondary { min-height:50px; flex:0 0 auto; }
 .coupon-remove { min-height:50px; white-space:nowrap; }

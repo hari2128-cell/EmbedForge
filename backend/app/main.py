@@ -8,7 +8,7 @@ import logging
 import uuid
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote, urlencode
 
@@ -52,8 +52,6 @@ app.add_middleware(
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 PRODUCT_PRICE_INR = 49
-COUPON_CODE = "EMBEDFORGE49"
-COUPON_PRICE_INR = 29
 PRODUCT_SLUG = "30-day-microcontroller-learning-kit"
 MATERIALS_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "embed-forge-materials")
 MAX_CONCURRENT_REQUESTS = int(os.getenv("MAX_CONCURRENT_REQUESTS", "120"))
@@ -294,15 +292,62 @@ async def call_coupon_rpc(name: str, payload: dict[str, object], tolerate_missin
     return response.json()
 
 
-async def reserve_coupon(order_id: str, user_id: str, coupon: str) -> int:
-    if coupon.upper() != COUPON_CODE:
+async def coupon_offer(code: str) -> dict[str, object] | None:
+    """Read coupon details from Supabase; browser-provided amounts are ignored."""
+    if not code or len(code) > 64 or any(not (character.isascii() and (character.isalnum() or character in "_-")) for character in code):
+        return None
+    required("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")
+    async with pooled_client() as client:
+        response = await client.get(
+            f"{os.environ['SUPABASE_URL'].rstrip('/')}/rest/v1/coupons",
+            params={"select": "code,discount_inr,max_redemptions,active", "code": f"eq.{code}"},
+            headers=supabase_headers(),
+        )
+    if response.status_code >= 400:
+        raise HTTPException(status_code=503, detail="Coupon service is unavailable. Please try again shortly.")
+    rows = response.json()
+    return rows[0] if rows else None
+
+
+async def coupon_redeemed_count(code: str) -> int:
+    required("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")
+    async with pooled_client() as client:
+        response = await client.get(
+            f"{os.environ['SUPABASE_URL'].rstrip('/')}/rest/v1/coupon_redemptions",
+            params={"select": "order_id", "code": f"eq.{code}", "state": "eq.REDEEMED"},
+            headers={**supabase_headers(), "Prefer": "count=exact"},
+        )
+    if response.status_code >= 400:
+        raise HTTPException(status_code=503, detail="Coupon service is unavailable. Please try again shortly.")
+    count_header = response.headers.get("content-range", "*/0").rsplit("/", 1)[-1]
+    return int(count_header) if count_header.isdigit() else len(response.json())
+
+
+async def validate_coupon_offer(code: str) -> dict[str, object]:
+    offer = await coupon_offer(code)
+    if not offer or not offer.get("active"):
         raise HTTPException(status_code=422, detail="Invalid coupon code.")
-    response = await call_coupon_rpc("reserve_embedforge_coupon", {"p_order_id": order_id, "p_user_id": user_id})
+    redeemed = await coupon_redeemed_count(code)
+    maximum = int(offer["max_redemptions"])
+    if redeemed >= maximum:
+        raise HTTPException(status_code=409, detail="Sorry, this offer is no longer available.")
+    amount = PRODUCT_PRICE_INR - int(offer["discount_inr"])
+    if amount <= 0:
+        raise HTTPException(status_code=503, detail="Coupon configuration is unavailable. Please try again shortly.")
+    return {"code": str(offer["code"]), "amount": amount, "discount": PRODUCT_PRICE_INR - amount, "maxRedemptions": maximum, "successfulRedemptions": redeemed}
+
+
+async def reserve_coupon(order_id: str, user_id: str, coupon: str) -> int:
+    offer = await validate_coupon_offer(coupon)
+    response = await call_coupon_rpc("reserve_embedforge_coupon", {"p_order_id": order_id, "p_user_id": user_id, "p_code": coupon})
     result = response[0] if isinstance(response, list) and response else None
     if not isinstance(result, dict) or not result.get("accepted"):
         reason = result.get("reason") if isinstance(result, dict) else "unavailable"
-        raise HTTPException(status_code=409, detail="This coupon has reached its redemption limit." if reason == "limit_reached" else "Invalid coupon code.")
-    return int(result.get("amount_inr", COUPON_PRICE_INR))
+        raise HTTPException(status_code=409, detail="Sorry, this offer is no longer available." if reason == "limit_reached" else "Invalid coupon code.")
+    amount = int(result.get("amount_inr", PRODUCT_PRICE_INR))
+    if amount != int(offer["amount"]):
+        raise HTTPException(status_code=503, detail="Coupon pricing changed. Please apply the coupon again.")
+    return amount
 
 
 async def set_purchase_failed(order_id: str) -> None:
@@ -595,6 +640,11 @@ async def checkout(request: Request) -> dict[str, str]:
         },
         "order_meta": {"return_url": f"{FRONTEND_URL}/payment/return?order_id={merchant_order_id}"},
     }
+    # Coupon reservations expire after 30 minutes in Supabase. Match the
+    # payment order to that window so an abandoned reservation cannot later
+    # settle and consume capacity after its database slot was released.
+    if coupon:
+        payload["order_expiry_time"] = (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat()
     headers = {
         "x-client-id": os.environ["CASHFREE_CLIENT_ID"],
         "x-client-secret": os.environ["CASHFREE_CLIENT_SECRET"],
@@ -668,9 +718,8 @@ async def validate_coupon(request: Request) -> dict[str, object]:
     code = str(body.get("coupon", "")).strip().upper()
     if product_id != PRODUCT_SLUG:
         raise HTTPException(status_code=422, detail="This coupon is not available for that product.")
-    if code != COUPON_CODE:
-        raise HTTPException(status_code=422, detail="Invalid coupon code.")
-    return {"valid": True, "code": COUPON_CODE, "amount": COUPON_PRICE_INR, "discount": 20, "discountPercent": 40.82}
+    offer = await validate_coupon_offer(code)
+    return {"valid": True, **offer, "discountPercent": round((int(offer["discount"]) / PRODUCT_PRICE_INR) * 100, 2)}
 
 
 @app.get("/api/access/tool")
